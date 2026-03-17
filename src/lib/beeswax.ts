@@ -165,6 +165,7 @@ export async function createBeeswaxDraft(campaign: CampaignState): Promise<Beesw
     const advertiser = await post('/rest/advertiser', {
       advertiser_name: campaign.business_name ?? 'SMB Advertiser',
       notes: `Created via SMB chatbot. Contact: ${campaign.contact_name ?? ''}`,
+      default_continent: continents[0] ?? 'NAM',
       active: true,
     }, cookie)
 
