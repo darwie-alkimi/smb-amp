@@ -147,10 +147,18 @@ function MessageBubble({ msg, isStreaming }: { msg: ChatMessage; isStreaming: bo
 
 // ─── File Upload ──────────────────────────────────────────────────────────────
 
-function FileUploadWidget({ onUpload }: { onUpload: (file: File) => Promise<void> }) {
+function FileUploadWidget({
+  onUpload,
+  onUrl,
+}: {
+  onUpload: (file: File) => Promise<void>
+  onUrl: (url: string) => Promise<void>
+}) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [tab, setTab] = useState<'file' | 'url'>('file')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
   const [error, setError] = useState('')
 
   const handleFile = async (file: File) => {
@@ -164,39 +172,92 @@ function FileUploadWidget({ onUpload }: { onUpload: (file: File) => Promise<void
     }
   }
 
+  const handleUrl = async () => {
+    if (!urlInput.trim()) return
+    setError('')
+    setUploading(true)
+    try {
+      await onUrl(urlInput.trim())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invalid URL')
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="mx-auto my-4 max-w-sm">
-      <input
-        ref={inputRef}
-        type="file"
-        className="hidden"
-        accept="image/*,video/mp4,application/zip"
-        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-      />
-      <div
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragging(false)
-          if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0])
-        }}
-        className={`cursor-pointer rounded-xl border border-dashed p-6 text-center transition-colors ${
-          dragging
-            ? 'border-accent bg-accent/10'
-            : 'border-surface-border bg-surface-elevated hover:border-accent/50'
-        }`}
-      >
-        <div className="mb-2 text-2xl">🖼️</div>
-        <p className="text-sm font-medium text-white/80">
-          {uploading ? 'Uploading…' : 'Upload your ad creative'}
-        </p>
-        <p className="mt-1 text-xs text-white/30">
-          JPG, PNG, GIF, WebP, MP4, HTML5 ZIP · max 50 MB
-        </p>
-        <p className="mt-1 text-xs text-white/25">Drag & drop or click to browse</p>
+      {/* Tabs */}
+      <div className="mb-3 flex rounded-lg bg-surface-elevated p-1">
+        {(['file', 'url'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => { setTab(t); setError('') }}
+            className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
+              tab === t ? 'bg-accent text-white' : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            {t === 'file' ? '⬆ Upload file' : '🔗 Paste URL'}
+          </button>
+        ))}
       </div>
+
+      {tab === 'file' ? (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,video/mp4,application/zip"
+            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+          />
+          <div
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragging(false)
+              if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0])
+            }}
+            className={`cursor-pointer rounded-xl border border-dashed p-6 text-center transition-colors ${
+              dragging
+                ? 'border-accent bg-accent/10'
+                : 'border-surface-border bg-surface-elevated hover:border-accent/50'
+            }`}
+          >
+            <div className="mb-2 text-2xl">🖼️</div>
+            <p className="text-sm font-medium text-white/80">
+              {uploading ? 'Uploading…' : 'Upload your ad creative'}
+            </p>
+            <p className="mt-1 text-xs text-white/30">
+              JPG, PNG, GIF, WebP, MP4, HTML5 ZIP · max 50 MB
+            </p>
+            <p className="mt-1 text-xs text-white/25">Drag & drop or click to browse</p>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-xl border border-surface-border bg-surface-elevated p-4">
+          <p className="mb-2 text-xs text-white/50">
+            Paste a direct link to your creative (Google Drive, Dropbox, or image URL)
+          </p>
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleUrl()}
+            placeholder="https://..."
+            className="w-full rounded-lg border border-surface-border bg-[#0d0d0f] px-3 py-2 text-sm text-white/80 placeholder-white/20 outline-none focus:border-accent/50"
+          />
+          <button
+            onClick={handleUrl}
+            disabled={!urlInput.trim() || uploading}
+            className="mt-3 w-full rounded-lg bg-accent py-2 text-xs font-medium text-white transition-colors hover:bg-accent-light disabled:opacity-40"
+          >
+            {uploading ? 'Confirming…' : 'Use this URL'}
+          </button>
+        </div>
+      )}
+
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   )
@@ -211,7 +272,7 @@ function CampaignSummary({
 }) {
   const rows: [string, string][] = [
     ['Business Name', state.business_name ?? '—'],
-    ['Email', state.business_email ?? '—'],
+    ['Contact Name', state.contact_name ?? '—'],
     ['Campaign Name', state.campaign_name ?? '—'],
     ['Start Date', state.start_date ?? '—'],
     ['End Date', state.end_date ?? '—'],
@@ -292,7 +353,7 @@ function SuccessScreen({ result, state }: { result: BeeswaxDraftResult; state: C
         </div>
       </div>
       <p className="mt-5 text-xs text-white/30">
-        A confirmation will be sent to <span className="text-white/50">{state.business_email}</span>
+        Submitted by <span className="text-white/50">{state.contact_name}</span>. Our team will be in touch shortly.
       </p>
       {result.mock && (
         <p className="mt-2 text-[10px] text-white/20">Demo mode — no real campaign was created</p>
@@ -316,6 +377,7 @@ export default function Home() {
 
   const chatBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const attachRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -453,6 +515,19 @@ export default function Home() {
     finally { setSubmitting(false) }
   }
 
+  const handleCreativeUrl = async (url: string) => {
+    const fileName = url.split('/').pop()?.split('?')[0] ?? 'creative'
+    const newState: CampaignState = {
+      ...campaignState,
+      creative_file_name: fileName,
+      creative_file_type: 'url',
+      creative_uploaded: true,
+    }
+    setCampaignState(newState)
+    setPhase('chatting')
+    await sendMessage(`I've provided a URL for my creative: ${url}`, newState)
+  }
+
   const handleEdit = () => {
     setPhase('chatting')
     sendMessage('I want to make some changes.')
@@ -517,7 +592,7 @@ export default function Home() {
           ))}
 
           {phase === 'uploading' && (
-            <FileUploadWidget onUpload={handleCreativeUpload} />
+            <FileUploadWidget onUpload={handleCreativeUpload} onUrl={handleCreativeUrl} />
           )}
 
           {phase === 'reviewing' && (
@@ -543,9 +618,26 @@ export default function Home() {
         {/* Input — "Ask anything" style */}
         {phase === 'chatting' && (
           <div className="px-6 pb-5">
+            <input
+              ref={attachRef}
+              type="file"
+              className="hidden"
+              accept="image/*,video/mp4,application/zip"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  setPhase('uploading')
+                  handleCreativeUpload(file)
+                }
+              }}
+            />
             <div className="flex items-end gap-2 rounded-xl border border-surface-border bg-surface-elevated px-4 py-3 transition-colors focus-within:border-accent/40">
               {/* Attach icon */}
-              <button className="mb-0.5 flex-shrink-0 text-white/20 hover:text-white/50 transition-colors">
+              <button
+                onClick={() => attachRef.current?.click()}
+                className="mb-0.5 flex-shrink-0 text-white/20 hover:text-white/50 transition-colors"
+                title="Attach creative file"
+              >
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
                   <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
                 </svg>

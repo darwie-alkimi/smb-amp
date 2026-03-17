@@ -1,6 +1,6 @@
 export type CampaignField =
   | 'business_name'
-  | 'business_email'
+  | 'contact_name'
   | 'campaign_name'
   | 'start_date'
   | 'end_date'
@@ -10,7 +10,7 @@ export type CampaignField =
 
 export interface CampaignState {
   business_name?: string
-  business_email?: string
+  contact_name?: string
   campaign_name?: string
   start_date?: string
   end_date?: string
@@ -56,14 +56,13 @@ export interface BeeswaxDraftResult {
   success: boolean
   advertiserId?: string
   campaignId?: string
-  lineItemId?: string
   error?: string
   mock?: boolean
 }
 
 export const FIELD_LABELS: Record<CampaignField, string> = {
   business_name: 'Business Name',
-  business_email: 'Email',
+  contact_name: 'Contact Name',
   campaign_name: 'Campaign Name',
   start_date: 'Start Date',
   end_date: 'End Date',
@@ -74,7 +73,7 @@ export const FIELD_LABELS: Record<CampaignField, string> = {
 
 export const ALL_FIELDS: CampaignField[] = [
   'business_name',
-  'business_email',
+  'contact_name',
   'campaign_name',
   'start_date',
   'end_date',

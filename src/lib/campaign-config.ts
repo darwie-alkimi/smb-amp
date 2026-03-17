@@ -4,7 +4,7 @@ export const SYSTEM_PROMPT = `You are a friendly campaign setup assistant helpin
 
 You need to collect the following information IN ORDER, ONE FIELD AT A TIME:
 1. Business name — the name of their company or brand
-2. Business email — their email address (for account setup)
+2. Contact name — the name of the person setting up the campaign
 3. Campaign name — suggest one based on their business name
 4. Start date — must be today or in the future (format: YYYY-MM-DD when saving)
 5. End date — must be after start date
@@ -57,7 +57,7 @@ export const TOOLS: Anthropic.Tool[] = [
           type: 'string',
           enum: [
             'business_name',
-            'business_email',
+            'contact_name',
             'campaign_name',
             'start_date',
             'end_date',

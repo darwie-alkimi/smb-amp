@@ -1,9 +1,9 @@
 # Product Requirements Document
 ## SMB Ad Campaign Setup Chatbot (via Beeswax DSP)
 
-**Version:** 1.0
-**Date:** 2026-03-11
-**Status:** Draft
+**Version:** 1.1
+**Date:** 2026-03-16
+**Status:** MVP Built & In Testing
 
 ---
 
@@ -13,7 +13,7 @@
 Small and medium-sized businesses (SMBs) want to run programmatic advertising but find DSP interfaces too complex and jargon-heavy. They get lost in technical setup flows designed for professional media buyers.
 
 ### Solution
-A conversational chatbot that guides an SMB user through campaign setup step-by-step, using plain language. On completion, the chatbot automatically creates the campaign as a **draft in Beeswax** via the Beeswax API — no DSP knowledge required.
+A conversational chatbot that guides an SMB user through campaign setup step-by-step, using plain language. On completion, the chatbot automatically creates a new Beeswax advertiser for the SMB and pushes the campaign as a **draft** — no DSP knowledge required. An account manager then reviews and activates.
 
 ---
 
@@ -21,229 +21,201 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 
 - Reduce campaign setup friction for non-technical advertisers
 - Collect all required Beeswax campaign fields through natural conversation
-- Push a complete draft campaign to Beeswax automatically on submission
+- Auto-create a Beeswax advertiser per SMB + push draft campaign on submission
 - Keep the user experience simple, guided, and jargon-free
+- SMB never sees or accesses Beeswax directly
 
 ---
 
 ## 3. Users
 
 **Primary:** SMB owners or marketing managers with little/no programmatic advertising experience
-**Secondary:** Agency account managers setting up campaigns on behalf of SMB clients
+**Secondary:** Alkimi account managers who review and activate submitted drafts in Beeswax
 
 ---
 
-## 4. Scope (MVP)
+## 4. Scope (MVP) — Built
 
-### In Scope
-- Conversational UI (chatbot)
-- Campaign field collection (see Section 6)
-- Creative asset upload
-- Beeswax draft campaign creation via API
-- Basic validation and error messaging
-- Confirmation screen on success
+### In Scope ✓
+- Conversational UI (chatbot) powered by Claude `claude-opus-4-6`
+- Campaign field collection via streaming chat with tool use
+- Creative asset upload (validated client-side, stored server-side)
+- Auto-create Beeswax advertiser per SMB submission
+- Beeswax draft campaign + line item creation via API
+- Campaign summary review screen before submission
+- SMB-friendly success screen (no Beeswax IDs exposed)
+- Dark AMP-inspired UI theme
+- Mock mode when Beeswax credentials not set
 
 ### Out of Scope (Post-MVP)
-- Campaign activation (launch) — drafts only for MVP
+- Campaign activation — drafts only, account manager activates
 - Audience segment targeting beyond geography
-- Frequency capping configuration
+- Frequency capping / bid strategy
 - Reporting / analytics
 - Multi-user / team accounts
-- Bid strategy customization
+- Email notification to account manager on submission
+- S3 storage for creative files
+- Auth / login system
 
 ---
 
-## 5. User Flow
+## 5. User Flow (Implemented)
 
 ```
-1. Landing screen → "Let's set up your ad campaign"
-2. Chatbot collects fields one at a time (see Section 6)
-3. Creative upload prompt
-4. Summary screen — user reviews all inputs
-5. Confirm → API call to Beeswax → campaign created as draft
-6. Success screen with Beeswax campaign ID + link
+1. Landing screen → "New Campaign"
+2. Chatbot collects 8 fields one at a time
+3. Creative upload widget appears inline in chat
+4. Campaign summary card — user reviews all inputs
+5. Confirm → create Beeswax advertiser → create campaign draft → create line item
+6. SMB-friendly success screen (campaign name, dates, budget, email confirmation note)
 ```
-
-If a required field is missing or invalid, the chatbot re-prompts with a plain-language explanation.
 
 ---
 
-## 6. Required Campaign Fields
+## 6. Campaign Fields Collected (Final)
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| Campaign name | Yes | Auto-suggested from advertiser name if available |
-| Start date | Yes | Must be today or future |
+| Business name | Yes | Used to create Beeswax advertiser |
+| Business email | Yes | Shown on success screen as confirmation recipient |
+| Campaign name | Yes | Auto-suggested from business name |
+| Start date | Yes | Must be today or future; saved as YYYY-MM-DD |
 | End date | Yes | Must be after start date |
-| Budget (total) | Yes | USD, minimum TBD (e.g. $500) |
-| Estimated impressions | Yes | Derived from budget + CPM estimate, or user-entered |
-| Geography | Yes | Country → State/DMA level; multi-select |
-| Creative upload | Yes | Accepted formats: JPG, PNG, GIF, HTML5 ZIP, MP4; size limits per IAB standard |
-| IAB category | No (optional) | Dropdown from IAB Content Taxonomy v2; helps with brand safety targeting |
+| Budget (total) | Yes | USD, no minimum enforced (draft only) |
+| Geography | Yes | Country/state level, plain language |
+| Business sector | Yes | Asked in plain language, mapped to IAB category code |
+| Creative upload | Yes | JPG, PNG, GIF, WebP, MP4, HTML5 ZIP; max 50MB |
+
+**Removed from original PRD:**
+- Estimated impressions — removed (no CPM default needed for a draft)
+- IAB category as optional — made required, asked as plain "what sector"
+- Minimum budget — removed (drafts don't need enforcement)
 
 ---
 
-## 7. Chatbot Conversation Design
-
-### Principles
-- One question at a time
-- Plain English — no DSP jargon
-- Provide examples and hints inline (e.g. "e.g. March 1 – March 31")
-- Allow going back to edit a previous answer
-- Show a progress indicator (e.g. "Step 3 of 7")
-
-### Sample Conversation Flow
-
-```
-Bot: Hi! Let's set up your ad campaign. What would you like to name it?
-User: Spring Sale 2026
-
-Bot: Great! When should your campaign start? (e.g. March 15, 2026)
-User: March 20
-
-Bot: And when should it end?
-User: April 10
-
-Bot: What's your total budget for this campaign? (in USD)
-User: $2000
-
-Bot: Based on average rates, that could get you around 400,000 impressions.
-     Does that sound right, or would you like to set a specific number?
-User: That works
-
-Bot: Where do you want your ads to show? You can choose countries, states, or cities.
-User: United States — New York and California
-
-Bot: Almost there! Please upload your ad creative.
-     Accepted: JPG, PNG, GIF, HTML5 ZIP, MP4
-[Upload widget]
-
-Bot: (Optional) What category best describes your business?
-     This helps place your ads in the right context.
-[IAB category dropdown or skip]
-
-Bot: Here's a summary of your campaign:
-     • Name: Spring Sale 2026
-     • Dates: March 20 – April 10, 2026
-     • Budget: $2,000
-     • Est. Impressions: 400,000
-     • Geography: US — New York, California
-     • Creative: banner_spring.jpg
-     • Category: —
-
-     Ready to create your campaign draft?
-[Confirm] [Edit]
-```
-
----
-
-## 8. Beeswax API Integration
+## 7. Beeswax API Integration (Implemented)
 
 ### Authentication
-- Server-side API key stored securely (env var / secrets manager)
-- All API calls made from backend — credentials never exposed to client
+- Basic auth (username + password) stored in `.env.local`
+- All API calls server-side — credentials never exposed to client
+- Auto-switches to mock mode if credentials not set
 
-### API Actions (MVP)
+### API Flow on Submission
 
-| Action | Beeswax Endpoint | Trigger |
-|--------|-----------------|---------|
-| Create campaign | `POST /rest/campaign` | On user confirmation |
-| Upload creative | `POST /rest/creative` | On file upload |
-| Create line item | `POST /rest/line_item` | After campaign created |
-| Associate creative | `POST /rest/creative_line_item` | After line item created |
+| Step | Endpoint | Notes |
+|------|----------|-------|
+| 1. Create advertiser | `POST /rest/advertiser` | One per SMB, named after business |
+| 2. Create campaign | `POST /rest/campaign` | `status: inactive` (draft) |
+| 3. Create line item | `POST /rest/line_item` | Linked to campaign, also inactive |
 
-### Campaign Object (draft)
-```json
-{
-  "advertiser_id": "<smb_advertiser_id>",
-  "campaign_name": "Spring Sale 2026",
-  "start_date": "2026-03-20",
-  "end_date": "2026-04-10",
-  "budget_type": "fixed",
-  "budget": 2000,
-  "status": "inactive",
-  "notes": "Created via SMB chatbot"
-}
-```
-
-> **Note:** `status: inactive` ensures campaign is saved as a draft and not immediately live.
-
-### Error Handling
-- If Beeswax API returns an error, show user-friendly message and allow retry
-- Log full API errors server-side for debugging
-- Do not expose raw API errors to the user
+### Environment (Sandbox)
+- API URL: `https://alkimisbx.api.beeswax.com`
+- Credentials stored in `.env.local` (gitignored)
 
 ---
 
-## 9. Creative Specifications
-
-Follow IAB New Ad Portfolio standard sizes:
-
-| Format | Common Sizes |
-|--------|-------------|
-| Display | 300×250, 728×90, 160×600, 320×50 |
-| Video | 16:9, MP4, max 30s for MVP |
-| HTML5 | ZIP bundle, max 200KB |
-
-Validate file type and size on upload before sending to Beeswax.
-
----
-
-## 10. Validation Rules
-
-| Field | Rule |
-|-------|------|
-| Start date | ≥ today |
-| End date | > start date |
-| Budget | > $0, numeric |
-| Creative | Valid file type, within size limit |
-| Geography | At least one selection |
-
----
-
-## 11. Technical Stack (Recommended)
+## 8. Technical Stack (Built)
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js (React) |
-| Chat UI | Custom or Vercel AI SDK streaming chat |
-| Backend | Node.js / Next.js API routes |
-| AI/NLP | Claude API (Anthropic) — conversational flow |
-| File storage | S3 or similar for creative uploads |
-| DSP | Beeswax REST API |
-| Auth | Clerk or NextAuth (SMB user accounts) |
+| Framework | Next.js 14 (App Router), TypeScript |
+| Frontend | React, Tailwind CSS |
+| AI | Anthropic Claude `claude-opus-4-6` with streaming + tool use |
+| Backend | Next.js API routes (Node.js runtime) |
+| DSP | Beeswax REST API (Basic auth) |
+| File storage | Local validation only (S3 upload is next step) |
+| Auth | None (MVP — one-shot flow, no login) |
+| Hosting | Local dev / to be deployed |
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/app/page.tsx` | Full chat UI, sidebar, upload widget, summary, success |
+| `src/app/api/chat/route.ts` | Streaming Claude endpoint with agentic tool loop |
+| `src/app/api/campaign/submit/route.ts` | Beeswax submission endpoint |
+| `src/app/api/upload/route.ts` | Creative file validation |
+| `src/lib/beeswax.ts` | Beeswax integration (mock + live) |
+| `src/lib/campaign-config.ts` | Claude system prompt + tool definitions |
+| `src/lib/types.ts` | Shared TypeScript types |
+| `.env.local` | Credentials (gitignored) |
+| `.env.example` | Template for credentials |
 
 ---
 
-## 12. Success Metrics
+## 9. Open Questions Resolved
+
+| Question | Decision |
+|----------|---------|
+| Each SMB gets own Beeswax advertiser? | Yes — created automatically on submission |
+| Minimum budget? | None — it's a draft, no enforcement needed |
+| Who activates draft? | Account manager reviews in Beeswax and activates |
+| Login/auth for MVP? | No — one-shot flow, email captured in chat |
+| CPM/impression estimate? | Removed — not needed for draft creation |
+| IAB category optional or required? | Required — asked as plain business sector question |
+
+---
+
+## 10. Remaining Open Questions
+
+1. Where does the creative file actually go? (Currently validated but not stored — needs S3)
+2. How does account manager get notified when a draft is submitted? (Email notification not built yet)
+3. Do we want a dashboard for account managers to see all submitted drafts?
+4. Deploy to Vercel or internal hosting?
+
+---
+
+## 11. Success Metrics
 
 | Metric | Target |
 |--------|--------|
 | Campaign setup completion rate | > 70% of sessions started |
 | Time to complete setup | < 5 minutes |
-| API success rate (Beeswax draft created) | > 98% |
+| Beeswax API success rate | > 98% |
 | User-reported ease of use | > 4/5 satisfaction |
 
 ---
 
-## 13. Open Questions
+## 12. Next Steps (Post-MVP)
 
-1. Does each SMB get their own Beeswax advertiser ID, or do all SMBs share one account with sub-advertisers?
-2. What is the minimum budget to enforce?
-3. Who reviews and activates the draft campaign — the SMB, or an account manager?
-4. Do we need a login/account system for MVP, or is it a one-shot flow?
-5. What CPM rate should we use for the impression estimate calculation?
-6. Are there any Beeswax seat/account restrictions we need to work around?
+1. **S3 creative upload** — actually store the file and associate with Beeswax creative
+2. **Account manager notification** — email via Resend/SendGrid when draft submitted
+3. **Deploy** — Vercel or internal hosting
+4. **Pilot** — test with 3–5 real SMBs
+5. **Auth** — login so SMBs can return and view their campaigns
+6. **Dashboard** — campaign history page (account manager view)
+7. **Alkimi DSP integration** — push to Alkimi test DSP alongside Beeswax (OAuth2/Keycloak auth, credentials available)
 
 ---
 
-## 14. Milestones
+---
 
-| Milestone | Description |
-|-----------|-------------|
-| M1 | Chatbot UI with full field collection (no API) |
-| M2 | Beeswax API integration — draft campaign creation |
-| M3 | Creative upload + association |
-| M4 | Validation, error handling, success screen |
-| M5 | Internal QA + Beeswax sandbox testing |
-| M6 | Pilot with 3–5 SMB users |
+# Session Log
+*Used as memory across Claude Code sessions*
+
+---
+
+## Session 1 — 2026-03-16
+
+**What was built:**
+- Full MVP from scratch in one session
+- Next.js 14 app with TypeScript + Tailwind
+- Claude `claude-opus-4-6` streaming chat with agentic tool loop
+- Beeswax integration: creates advertiser + campaign + line item
+- Dark AMP-inspired UI (inspired by Alkimi Exchange Figma design)
+- Pushed to GitHub: `https://github.com/darwie-alkimi/smb-amp.git`
+
+**Decisions made:**
+- No minimum budget (draft only)
+- No impression estimate (removed CPM default)
+- IAB category kept but asked as plain "what sector are you in"
+- Each SMB gets their own Beeswax advertiser (created on submit)
+- SMB never sees Beeswax — account manager activates drafts
+- No auth for MVP — one-shot flow with email capture
+- Mock mode auto-activates when Beeswax credentials not set
+
+**Environment:**
+- Beeswax sandbox: `https://alkimisbx.api.beeswax.com`
+- Anthropic API key: in `.env.local` (do not commit)
+- Dev server: `npm run dev` → `http://localhost:3000`
+
+**Status:** MVP built, credentials configured, ready for end-to-end testing
