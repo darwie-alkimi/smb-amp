@@ -1,6 +1,3 @@
-// Creative file upload — validates and stores file metadata.
-// For production, replace the in-memory response with an S3 upload.
-
 const ALLOWED_TYPES = [
   'image/jpeg',
   'image/png',
@@ -11,7 +8,7 @@ const ALLOWED_TYPES = [
   'text/html',
 ]
 
-const MAX_SIZE_BYTES = 50 * 1024 * 1024 // 50 MB
+const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB (base64 stored in state)
 
 export async function POST(req: Request) {
   try {
@@ -23,30 +20,27 @@ export async function POST(req: Request) {
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return Response.json(
-        {
-          error: `File type "${file.type}" is not supported. Please upload JPG, PNG, GIF, WebP, MP4, or HTML5 ZIP.`,
-        },
-        { status: 400 }
-      )
+      return Response.json({
+        error: `File type "${file.type}" is not supported. Please upload JPG, PNG, GIF, WebP, MP4, or HTML5 ZIP.`,
+      }, { status: 400 })
     }
 
     if (file.size > MAX_SIZE_BYTES) {
-      return Response.json(
-        { error: 'File is too large. Maximum size is 50 MB.' },
-        { status: 400 }
-      )
+      return Response.json({
+        error: 'File is too large. Maximum size is 10 MB.',
+      }, { status: 400 })
     }
 
-    // In production: upload to S3 here and return the URL/key
-    // const url = await uploadToS3(file)
+    // Convert to base64 so we can pass it through to Beeswax at submission time
+    const buffer = await file.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString('base64')
 
     return Response.json({
       success: true,
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type,
-      // url: url   // uncomment when S3 is configured
+      fileBase64: base64,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Upload failed'

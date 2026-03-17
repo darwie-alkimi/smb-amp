@@ -20,6 +20,7 @@ export interface CampaignState {
   creative_file_name?: string
   creative_file_size?: number
   creative_file_type?: string
+  creative_file_base64?: string
   creative_uploaded?: boolean
 }
 

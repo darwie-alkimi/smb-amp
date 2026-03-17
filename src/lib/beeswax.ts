@@ -18,6 +18,22 @@ import type { CampaignState, BeeswaxDraftResult } from './types'
 
 // ─── Geo mapping ──────────────────────────────────────────────────────────────
 
+// Country → continent mapping for Beeswax campaign-level geo
+// Beeswax continents: NAM, EMEA, APAC, LATAM
+const COUNTRY_TO_CONTINENT: Record<string, string> = {
+  // NAM
+  'US': 'NAM', 'CA': 'NAM', 'MX': 'NAM',
+  // EMEA
+  'GB': 'EMEA', 'IE': 'EMEA', 'FR': 'EMEA', 'DE': 'EMEA', 'ES': 'EMEA',
+  'IT': 'EMEA', 'NL': 'EMEA', 'SE': 'EMEA', 'NO': 'EMEA', 'DK': 'EMEA',
+  'AE': 'EMEA', 'SA': 'EMEA', 'ZA': 'EMEA',
+  // APAC
+  'AU': 'APAC', 'NZ': 'APAC', 'IN': 'APAC', 'SG': 'APAC',
+  'JP': 'APAC', 'KR': 'APAC', 'CN': 'APAC',
+  // LATAM
+  'BR': 'LATAM', 'AR': 'LATAM', 'CO': 'LATAM', 'CL': 'LATAM',
+}
+
 const GEO_MAP: Record<string, string> = {
   'united states': 'US', 'usa': 'US', 'us': 'US', 'america': 'US',
   'united kingdom': 'GB', 'uk': 'GB', 'england': 'GB', 'britain': 'GB',
@@ -26,15 +42,41 @@ const GEO_MAP: Record<string, string> = {
   'netherlands': 'NL', 'sweden': 'SE', 'norway': 'NO', 'denmark': 'DK',
   'uae': 'AE', 'dubai': 'AE', 'saudi arabia': 'SA', 'india': 'IN',
   'singapore': 'SG', 'japan': 'JP', 'south korea': 'KR', 'china': 'CN',
+  'brazil': 'BR', 'argentina': 'AR', 'colombia': 'CO', 'chile': 'CL',
+  'south africa': 'ZA', 'mexico': 'MX',
+  // Broad regions
+  'europe': 'EMEA_BROAD', 'asia': 'APAC_BROAD', 'latin america': 'LATAM_BROAD',
+  'middle east': 'EMEA_BROAD', 'africa': 'EMEA_BROAD',
 }
 
 function extractCountryCodes(geography: string): string[] {
   const lower = geography.toLowerCase()
   const found: string[] = []
   for (const [key, code] of Object.entries(GEO_MAP)) {
-    if (lower.includes(key) && !found.includes(code)) found.push(code)
+    if (lower.includes(key) && !code.includes('_BROAD') && !found.includes(code)) {
+      found.push(code)
+    }
   }
   return found.length > 0 ? found : ['US']
+}
+
+function extractContinents(geography: string): string[] {
+  const countries = extractCountryCodes(geography)
+  const continents = new Set<string>()
+
+  // Check for broad region keywords first
+  const lower = geography.toLowerCase()
+  if (lower.includes('europe') || lower.includes('middle east') || lower.includes('africa')) continents.add('EMEA')
+  if (lower.includes('asia')) continents.add('APAC')
+  if (lower.includes('latin america')) continents.add('LATAM')
+
+  // Map countries to continents
+  for (const code of countries) {
+    const continent = COUNTRY_TO_CONTINENT[code]
+    if (continent) continents.add(continent)
+  }
+
+  return continents.size > 0 ? Array.from(continents) : ['NAM']
 }
 
 function formatDate(date: string): string {
@@ -111,6 +153,7 @@ export async function createBeeswaxDraft(campaign: CampaignState): Promise<Beesw
   // ── LIVE MODE ────────────────────────────────────────────────────────────
   const budget = parseFloat((campaign.budget ?? '0').replace(/[^0-9.]/g, ''))
   const countryCodes = extractCountryCodes(campaign.geography ?? '')
+  const continents = extractContinents(campaign.geography ?? '')
   const post = (path: string, payload: object, cookie: string) =>
     beeswaxPost(path, payload, BEESWAX_API_URL, BEESWAX_USERNAME, BEESWAX_PASSWORD, cookie)
 
@@ -133,11 +176,35 @@ export async function createBeeswaxDraft(campaign: CampaignState): Promise<Beesw
       end_date: formatDate(campaign.end_date ?? ''),
       budget_type: 0,
       campaign_budget: budget,
+      continents,
       active: false,
       notes: `SMB chatbot. Sector: ${campaign.iab_category ?? ''}. Geography: ${campaign.geography ?? ''}. Creative: ${campaign.creative_file_name ?? ''}. Contact: ${campaign.contact_name ?? ''}`,
     }, cookie)
 
-    // 3. Create targeting expression
+    // 3. Upload creative to Beeswax
+    try {
+      if (campaign.creative_file_base64 && campaign.creative_file_name && campaign.creative_file_type) {
+        // Determine creative type: 0=banner, 6=video
+        const isVideo = campaign.creative_file_type.startsWith('video/')
+        await post('/rest/creative', {
+          advertiser_id: advertiser.id,
+          creative_name: campaign.creative_file_name,
+          creative_type: isVideo ? 6 : 0,
+          width: 300,
+          height: 250,
+          active: false,
+          creative_content: {
+            type: isVideo ? 'vast' : 'banner',
+            asset: campaign.creative_file_base64,
+            mime_type: campaign.creative_file_type,
+          },
+        }, cookie)
+      }
+    } catch (err) {
+      console.warn('[Beeswax] Creative upload skipped:', err instanceof Error ? err.message : err)
+    }
+
+    // 4. Create targeting expression (country + IAB category)
     let targetingExpressionId: number | null = null
     try {
       const targeting = await post('/rest/targeting_expression', {

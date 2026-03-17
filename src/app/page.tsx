@@ -493,6 +493,7 @@ export default function Home() {
       creative_file_name: data.fileName,
       creative_file_size: data.fileSize,
       creative_file_type: data.fileType,
+      creative_file_base64: data.fileBase64,
       creative_uploaded: true,
     }
     setCampaignState(newState)
