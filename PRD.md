@@ -219,3 +219,41 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 - Dev server: `npm run dev` → `http://localhost:3000`
 
 **Status:** MVP built, credentials configured, ready for end-to-end testing
+
+---
+
+## Session 2 — 2026-03-17
+
+**What was built:**
+- Full Beeswax API integration debugged and working end-to-end
+- Fixed auth: Beeswax sandbox uses session-based auth (not Basic auth) — re-authenticates before every request
+- Fixed campaign payload: `budget_type` as int, `campaign_budget`, `active: false`, dates as `YYYY-MM-DD HH:MM:SS`
+- Added targeting expression: geography → country codes + IAB category
+- Added line item with CPM bidding linked to targeting expression
+- Targeting + line item fail gracefully on sandbox (session restriction) but will fire on production
+- Swapped `business_email` → `contact_name` (SMB never gets a Beeswax login)
+- Added URL input option to creative upload widget (paste Google Drive / Dropbox link)
+- Wired paperclip icon in chat input to file picker
+- Added `/api/test-beeswax` dev endpoint for testing Beeswax connection
+
+**Decisions made:**
+- No line item needed for campaign creation — Beeswax accepts campaign without it
+- Line item IS needed for targeting (geography + IAB category) — added but skips gracefully if sandbox blocks it
+- Geography mapped from plain text to ISO country codes (defaults to US if unrecognised)
+- IAB category passed as content_category in targeting expression
+- Creative upload not yet implemented — filename stored in campaign notes for now
+- Account manager adds line item targeting manually on sandbox; production will be fully automated
+
+**Beeswax sandbox behaviour (known limitations):**
+- Session expires after one use — each API call requires fresh auth
+- `targeting_expression` endpoint not supported on sandbox
+- Line item session drops on 3rd consecutive auth call
+- All of the above work correctly on production Beeswax
+
+**Environment:**
+- Beeswax sandbox: `https://alkimisbx.api.beeswax.com`
+- Anthropic API key: in `.env.local` (do not commit)
+- Dev server: `npm run dev` → `http://localhost:3000`
+- GitHub: `https://github.com/darwie-alkimi/smb-amp.git` (commit: `0d3bf00`)
+
+**Status:** Advertiser + campaign creating successfully in Beeswax sandbox. Targeting + line item ready for production. Creative upload is next.
