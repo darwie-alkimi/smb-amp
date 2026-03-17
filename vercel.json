@@ -1,0 +1,12 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "env": {
+    "ANTHROPIC_API_KEY": "@anthropic_api_key",
+    "BEESWAX_API_URL": "@beeswax_api_url",
+    "BEESWAX_USERNAME": "@beeswax_username",
+    "BEESWAX_PASSWORD": "@beeswax_password"
+  }
+}
