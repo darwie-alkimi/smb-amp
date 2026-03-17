@@ -4,22 +4,19 @@
  * Mock mode (default): returns fake IDs for demo purposes.
  * Live mode: set BEESWAX_API_URL, BEESWAX_USERNAME, BEESWAX_PASSWORD in .env.local
  *
- * Flow:
- *   1. Create advertiser for the SMB
- *   2. Create campaign (inactive draft)
- *   3. Create targeting expression (geography + IAB category)
- *   4. Create line item with bidding + targeting
+ * Auth: Beeswax sandbox invalidates sessions after one use.
+ * We authenticate once and reuse — if it fails we re-auth and retry once.
  *
- * Note: Beeswax sandbox invalidates sessions aggressively.
- *       Each request re-authenticates. This works on production.
+ * Flow:
+ *   1. Create advertiser
+ *   2. Create campaign (inactive draft)
+ *   3. Create targeting expression (skips gracefully if unsupported)
+ *   4. Create line item with bidding + targeting (skips gracefully if fails)
  */
 
 import type { CampaignState, BeeswaxDraftResult } from './types'
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
 // ─── Geo mapping ──────────────────────────────────────────────────────────────
-// Maps plain-language geography input to Beeswax country codes
 
 const GEO_MAP: Record<string, string> = {
   'united states': 'US', 'usa': 'US', 'us': 'US', 'america': 'US',
@@ -35,11 +32,13 @@ function extractCountryCodes(geography: string): string[] {
   const lower = geography.toLowerCase()
   const found: string[] = []
   for (const [key, code] of Object.entries(GEO_MAP)) {
-    if (lower.includes(key) && !found.includes(code)) {
-      found.push(code)
-    }
+    if (lower.includes(key) && !found.includes(code)) found.push(code)
   }
-  return found.length > 0 ? found : ['US'] // default to US
+  return found.length > 0 ? found : ['US']
+}
+
+function formatDate(date: string): string {
+  return date.includes(' ') ? date : `${date} 00:00:00`
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -53,42 +52,48 @@ async function beeswaxAuth(apiUrl: string, username: string, password: string): 
   })
   const body = await res.json()
   if (!body.success) throw new Error(`Beeswax auth failed: ${JSON.stringify(body)}`)
-
   let cookie = ''
   res.headers.forEach((v, k) => { if (k === 'set-cookie') cookie = v.split(';')[0] })
   if (!cookie) throw new Error('Beeswax auth: no session cookie returned')
   return cookie
 }
 
-// ─── API call (re-authenticates each time) ───────────────────────────────────
+// ─── API call — re-auths on session failure ───────────────────────────────────
 
 async function beeswaxPost(
   path: string,
   payload: object,
   apiUrl: string,
   username: string,
-  password: string
+  password: string,
+  cookie: string
 ): Promise<{ id: number; [key: string]: unknown }> {
-  await sleep(500)
-  const cookie = await beeswaxAuth(apiUrl, username, password)
+  const attempt = async (c: string) => {
+    const res = await fetch(`${apiUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: c },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    })
+    const data = await res.json()
+    return { res, data }
+  }
 
-  const res = await fetch(`${apiUrl}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
-    body: JSON.stringify(payload),
-    cache: 'no-store',
-  })
+  let { res, data } = await attempt(cookie)
 
-  const data = await res.json()
+  // Sandbox kills sessions aggressively — re-auth and retry on any 401 or session error
+  const needsRetry = res.status === 401 || JSON.stringify(data).includes('session') || JSON.stringify(data).includes('logged in')
+  if (needsRetry) {
+    const freshCookie = await beeswaxAuth(apiUrl, username, password)
+    const retry = await attempt(freshCookie)
+    res = retry.res
+    data = retry.data
+  }
+
   if (!res.ok || data.success === false) {
     throw new Error(`Beeswax ${path} error ${res.status}: ${JSON.stringify(data)}`)
   }
   return data.payload ?? data
-}
-
-// Format date to Beeswax format
-function formatDate(date: string): string {
-  return date.includes(' ') ? date : `${date} 00:00:00`
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -98,34 +103,30 @@ export async function createBeeswaxDraft(campaign: CampaignState): Promise<Beesw
 
   // ── MOCK MODE ────────────────────────────────────────────────────────────
   if (!BEESWAX_API_URL || !BEESWAX_USERNAME || !BEESWAX_PASSWORD) {
-    console.log('[Beeswax MOCK] Would create:', {
-      advertiser: campaign.business_name,
-      campaign: campaign.campaign_name,
-    })
+    console.log('[Beeswax MOCK] Would create:', { advertiser: campaign.business_name, campaign: campaign.campaign_name })
     const id = Math.floor(Math.random() * 900000) + 100000
-    return {
-      success: true,
-      advertiserId: `MOCK-ADV-${id}`,
-      campaignId: `MOCK-CAMP-${id + 1}`,
-      mock: true,
-    }
+    return { success: true, advertiserId: `MOCK-ADV-${id}`, campaignId: `MOCK-CAMP-${id + 1}`, mock: true }
   }
 
   // ── LIVE MODE ────────────────────────────────────────────────────────────
   const budget = parseFloat((campaign.budget ?? '0').replace(/[^0-9.]/g, ''))
-  const creds = [BEESWAX_API_URL, BEESWAX_USERNAME, BEESWAX_PASSWORD] as const
   const countryCodes = extractCountryCodes(campaign.geography ?? '')
+  const post = (path: string, payload: object, cookie: string) =>
+    beeswaxPost(path, payload, BEESWAX_API_URL, BEESWAX_USERNAME, BEESWAX_PASSWORD, cookie)
 
   try {
+    // Single auth — reused for all calls, re-auths automatically on session failure
+    const cookie = await beeswaxAuth(BEESWAX_API_URL, BEESWAX_USERNAME, BEESWAX_PASSWORD)
+
     // 1. Create advertiser
-    const advertiser = await beeswaxPost('/rest/advertiser', {
+    const advertiser = await post('/rest/advertiser', {
       advertiser_name: campaign.business_name ?? 'SMB Advertiser',
       notes: `Created via SMB chatbot. Contact: ${campaign.contact_name ?? ''}`,
       active: true,
-    }, ...creds)
+    }, cookie)
 
     // 2. Create campaign
-    const createdCampaign = await beeswaxPost('/rest/campaign', {
+    const createdCampaign = await post('/rest/campaign', {
       advertiser_id: advertiser.id,
       campaign_name: campaign.campaign_name ?? 'Untitled Campaign',
       start_date: formatDate(campaign.start_date ?? ''),
@@ -133,46 +134,31 @@ export async function createBeeswaxDraft(campaign: CampaignState): Promise<Beesw
       budget_type: 0,
       campaign_budget: budget,
       active: false,
-      notes: `SMB chatbot submission. Contact: ${campaign.contact_name ?? ''}`,
-    }, ...creds)
+      notes: `SMB chatbot. Sector: ${campaign.iab_category ?? ''}. Geography: ${campaign.geography ?? ''}. Creative: ${campaign.creative_file_name ?? ''}. Contact: ${campaign.contact_name ?? ''}`,
+    }, cookie)
 
-    // 3. Create targeting expression (geography + IAB content category)
+    // 3. Create targeting expression
     let targetingExpressionId: number | null = null
     try {
-      const targeting = await beeswaxPost('/rest/targeting_expression', {
+      const targeting = await post('/rest/targeting_expression', {
         advertiser_id: advertiser.id,
         targeting_expression_name: `${campaign.campaign_name} — Targeting`,
         active: true,
         expression: {
           OR: [
-            // Geography targeting
-            {
-              AND: countryCodes.map(code => ({
-                operator: 'IS',
-                dimension: 'country',
-                value: code,
-              }))
-            },
-            // IAB content category targeting
-            ...(campaign.iab_category ? [{
-              operator: 'IS',
-              dimension: 'content_category',
-              value: campaign.iab_category,
-            }] : []),
+            { AND: countryCodes.map(code => ({ operator: 'IS', dimension: 'country', value: code })) },
+            ...(campaign.iab_category ? [{ operator: 'IS', dimension: 'content_category', value: campaign.iab_category }] : []),
           ]
         }
-      }, ...creds)
+      }, cookie)
       targetingExpressionId = targeting.id
     } catch (err) {
-      // Targeting expression may not be available on all Beeswax instances
-      // Log and continue — account manager can add targeting manually
-      console.warn('[Beeswax] Targeting expression failed (will skip):', err instanceof Error ? err.message : err)
+      console.warn('[Beeswax] Targeting expression skipped:', err instanceof Error ? err.message : err)
     }
 
-    // 4. Create line item with bidding + targeting
-    let lineItemId: number | null = null
+    // 4. Create line item
     try {
-      const lineItem = await beeswaxPost('/rest/line_item', {
+      await post('/rest/line_item', {
         advertiser_id: advertiser.id,
         campaign_id: createdCampaign.id,
         line_item_name: `${campaign.campaign_name} — Line Item 1`,
@@ -180,17 +166,12 @@ export async function createBeeswaxDraft(campaign: CampaignState): Promise<Beesw
         start_date: formatDate(campaign.start_date ?? ''),
         end_date: formatDate(campaign.end_date ?? ''),
         line_item_budget: budget,
-        bidding: {
-          bidding_strategy: 'CPM',
-          values: { cpm_bid: 5 },
-        },
+        bidding: { bidding_strategy: 'CPM', values: { cpm_bid: 5 } },
         ...(targetingExpressionId ? { targeting_expression_id: targetingExpressionId } : {}),
         active: false,
-      }, ...creds)
-      lineItemId = lineItem.id
+      }, cookie)
     } catch (err) {
-      // Line item creation failed — campaign still usable, account manager can add
-      console.warn('[Beeswax] Line item creation failed (will skip):', err instanceof Error ? err.message : err)
+      console.warn('[Beeswax] Line item skipped:', err instanceof Error ? err.message : err)
     }
 
     return {
