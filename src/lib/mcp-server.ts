@@ -112,10 +112,12 @@ Creative (optional but recommended):
 async function uploadCreative(args: Record<string, string>): Promise<object> {
   const { file_base64, file_name, file_type } = args
 
+  const token = process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN
   const buffer = Buffer.from(file_base64, 'base64')
   const blob = await put(file_name, buffer, {
     access: 'public',
     contentType: file_type,
+    token,
   })
 
   return { creative_url: blob.url, file_name, file_type }
