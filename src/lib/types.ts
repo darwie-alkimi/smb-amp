@@ -7,6 +7,7 @@ export type CampaignField =
   | 'budget'
   | 'geography'
   | 'iab_category'
+  | 'click_url'
 
 export interface CampaignState {
   business_name?: string
@@ -17,6 +18,7 @@ export interface CampaignState {
   budget?: string
   geography?: string
   iab_category?: string
+  click_url?: string
   creative_file_name?: string
   creative_file_size?: number
   creative_file_type?: string
@@ -70,6 +72,7 @@ export const FIELD_LABELS: Record<CampaignField, string> = {
   budget: 'Budget',
   geography: 'Geography',
   iab_category: 'Business Sector',
+  click_url: 'Click URL',
 }
 
 export const ALL_FIELDS: CampaignField[] = [
