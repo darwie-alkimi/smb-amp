@@ -39,13 +39,20 @@ Required fields to collect:
      Sports          → IAB17      Education       → IAB5     Beauty     → IAB18
      Home/Garden     → IAB10      Pets            → IAB16    Business/B2B → IAB3
 
-Creative (optional but recommended — provide one of):
-  • creative_url        — Public URL to image or video (server fetches it automatically)
-  • creative_base64 + creative_file_name + creative_file_type — for local files
+Creative (optional but recommended):
 
-When the user provides a local file path (e.g. ~/Desktop/ad.jpg) and you are in Claude Code,
-use the Read tool to read the file as base64, then pass creative_base64, creative_file_name,
-and creative_file_type to this tool.`,
+IMPORTANT — when the user says they have a file to upload or want to attach an image/video:
+  1. Ask them for the file path (e.g. ~/Desktop/ad.jpg)
+  2. Use the Read tool to read the file — it will return the content as base64
+  3. Pass that base64 content as creative_base64, the filename as creative_file_name,
+     and the MIME type as creative_file_type (e.g. "image/jpeg", "image/png", "video/mp4")
+  4. Then call this tool
+
+If the user provides a public URL (e.g. https://example.com/ad.jpg):
+  • Pass it as creative_url — the server will fetch and encode it automatically
+
+Do NOT skip the creative or ask the user to come back to it — handle it in the same flow
+before calling submit_campaign.`,
     inputSchema: {
       type: 'object',
       properties: {
