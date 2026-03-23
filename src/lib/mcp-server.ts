@@ -118,6 +118,7 @@ async function uploadCreative(args: Record<string, string>): Promise<object> {
     access: 'public',
     contentType: file_type,
     token,
+    addRandomSuffix: true,
   })
 
   return { creative_url: blob.url, file_name, file_type }
