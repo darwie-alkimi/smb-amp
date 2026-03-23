@@ -2,12 +2,14 @@
  * MCP Server — tool definitions and handlers for smb-amp.
  *
  * Tools:
- *   submit_campaign        — collect fields then create Beeswax draft
+ *   upload_creative          — upload a creative file to Vercel Blob, returns URL
+ *   submit_campaign          — collect fields then create Beeswax draft
  *   validate_campaign_fields — dry-run validation, no Beeswax call
  */
 
 import type { CampaignState } from './types'
 import { createBeeswaxDraft } from './beeswax'
+import { put } from '@vercel/blob'
 
 // ─── Protocol constants ───────────────────────────────────────────────────────
 
@@ -17,6 +19,30 @@ export const PROTOCOL_VERSION = '2024-11-05'
 // ─── Tool definitions (MCP JSON Schema format) ───────────────────────────────
 
 export const TOOLS = [
+  {
+    name: 'upload_creative',
+    description: `Upload an ad creative file (image or video) and get back a URL to use in submit_campaign.
+
+ALWAYS call this tool BEFORE submit_campaign when the user has a creative file.
+
+Steps:
+1. Ask the user for their creative file (they can attach it to the chat or give a file path)
+2. When you have the file, pass its base64 content + filename + MIME type to this tool
+3. This tool returns a creative_url
+4. Pass that creative_url to submit_campaign
+
+Supported formats: JPEG, PNG, GIF, WebP, MP4, MOV
+The file will be stored securely and the URL will be valid for Beeswax upload.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_base64:  { type: 'string', description: 'Base64-encoded file content' },
+        file_name:    { type: 'string', description: 'Original filename (e.g. "ad.jpg")' },
+        file_type:    { type: 'string', description: 'MIME type (e.g. "image/jpeg", "video/mp4")' },
+      },
+      required: ['file_base64', 'file_name', 'file_type'],
+    },
+  },
   {
     name: 'submit_campaign',
     description: `Submit an advertising campaign to Beeswax DSP for an SMB advertiser.
@@ -40,34 +66,20 @@ Required fields to collect:
      Home/Garden     → IAB10      Pets            → IAB16    Business/B2B → IAB3
 
 Creative (optional but recommended):
-
-IMPORTANT — when the user says they have a file to upload or want to attach an image/video:
-  1. Ask them for the file path (e.g. ~/Desktop/ad.jpg)
-  2. Use the Read tool to read the file — it will return the content as base64
-  3. Pass that base64 content as creative_base64, the filename as creative_file_name,
-     and the MIME type as creative_file_type (e.g. "image/jpeg", "image/png", "video/mp4")
-  4. Then call this tool
-
-If the user provides a public URL (e.g. https://example.com/ad.jpg):
-  • Pass it as creative_url — the server will fetch and encode it automatically
-
-Do NOT skip the creative or ask the user to come back to it — handle it in the same flow
-before calling submit_campaign.`,
+- If the user has a file: call upload_creative FIRST, then pass the returned URL as creative_url
+- If the user has a public URL already: pass it directly as creative_url`,
     inputSchema: {
       type: 'object',
       properties: {
-        business_name:      { type: 'string', description: 'Business name' },
-        contact_name:       { type: 'string', description: 'Contact person name' },
-        campaign_name:      { type: 'string', description: 'Campaign name' },
-        start_date:         { type: 'string', description: 'Start date (YYYY-MM-DD)' },
-        end_date:           { type: 'string', description: 'End date (YYYY-MM-DD)' },
-        budget:             { type: 'string', description: 'Budget in USD (e.g. "2000")' },
-        geography:          { type: 'string', description: 'Target geography description' },
-        iab_category:       { type: 'string', description: 'IAB category code (e.g. "IAB8")' },
-        creative_url:       { type: 'string', description: 'Public URL to image or video creative' },
-        creative_base64:    { type: 'string', description: 'Base64-encoded creative file content' },
-        creative_file_name: { type: 'string', description: 'Filename (used with creative_base64)' },
-        creative_file_type: { type: 'string', description: 'MIME type (used with creative_base64, e.g. "image/jpeg")' },
+        business_name: { type: 'string', description: 'Business name' },
+        contact_name:  { type: 'string', description: 'Contact person name' },
+        campaign_name: { type: 'string', description: 'Campaign name' },
+        start_date:    { type: 'string', description: 'Start date (YYYY-MM-DD)' },
+        end_date:      { type: 'string', description: 'End date (YYYY-MM-DD)' },
+        budget:        { type: 'string', description: 'Budget in USD (e.g. "2000")' },
+        geography:     { type: 'string', description: 'Target geography description' },
+        iab_category:  { type: 'string', description: 'IAB category code (e.g. "IAB8")' },
+        creative_url:  { type: 'string', description: 'URL to creative (from upload_creative or a public URL)' },
       },
       required: [
         'business_name', 'contact_name', 'campaign_name',
@@ -97,13 +109,28 @@ before calling submit_campaign.`,
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
-async function submitCampaign(args: Record<string, string>): Promise<object> {
-  let { creative_url, creative_base64, creative_file_name, creative_file_type } = args
+async function uploadCreative(args: Record<string, string>): Promise<object> {
+  const { file_base64, file_name, file_type } = args
 
-  // If a URL was provided, fetch it server-side and encode as base64
-  if (creative_url && !creative_base64) {
+  const buffer = Buffer.from(file_base64, 'base64')
+  const blob = await put(file_name, buffer, {
+    access: 'public',
+    contentType: file_type,
+  })
+
+  return { creative_url: blob.url, file_name, file_type }
+}
+
+async function submitCampaign(args: Record<string, string>): Promise<object> {
+  let { creative_url } = args
+  let creative_base64: string | undefined
+  let creative_file_name: string | undefined
+  let creative_file_type: string | undefined
+
+  // Fetch the creative URL server-side and encode as base64 for Beeswax
+  if (creative_url) {
     try {
-      const resp = await fetch(creative_url, { signal: AbortSignal.timeout(10_000) })
+      const resp = await fetch(creative_url, { signal: AbortSignal.timeout(15_000) })
       if (resp.ok) {
         const buffer = await resp.arrayBuffer()
         creative_base64 = Buffer.from(buffer).toString('base64')
@@ -116,14 +143,14 @@ async function submitCampaign(args: Record<string, string>): Promise<object> {
   }
 
   const campaign: CampaignState = {
-    business_name:       args.business_name,
-    contact_name:        args.contact_name,
-    campaign_name:       args.campaign_name,
-    start_date:          args.start_date,
-    end_date:            args.end_date,
-    budget:              args.budget,
-    geography:           args.geography,
-    iab_category:        args.iab_category,
+    business_name:        args.business_name,
+    contact_name:         args.contact_name,
+    campaign_name:        args.campaign_name,
+    start_date:           args.start_date,
+    end_date:             args.end_date,
+    budget:               args.budget,
+    geography:            args.geography,
+    iab_category:         args.iab_category,
     creative_file_base64: creative_base64,
     creative_file_name,
     creative_file_type,
@@ -164,9 +191,9 @@ function validateFields(args: Record<string, string>): object {
   const missing = required.filter(f => !args[f])
 
   return {
-    valid:          errors.length === 0 && missing.length === 0,
+    valid:           errors.length === 0 && missing.length === 0,
     errors,
-    missing_fields: missing,
+    missing_fields:  missing,
     fields_provided: Object.keys(args).filter(k => args[k]),
   }
 }
@@ -175,6 +202,11 @@ function validateFields(args: Record<string, string>): object {
 
 export async function handleToolCall(name: string, args: Record<string, unknown>) {
   const strArgs = args as Record<string, string>
+
+  if (name === 'upload_creative') {
+    const result = await uploadCreative(strArgs)
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+  }
 
   if (name === 'submit_campaign') {
     const result = await submitCampaign(strArgs)
