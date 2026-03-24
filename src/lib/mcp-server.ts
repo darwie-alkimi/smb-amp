@@ -14,6 +14,7 @@ import { createBeeswaxDraft } from './beeswax'
 import { generateCreativeSvg } from './creative-generator'
 import { getMockStats } from './mock-stats'
 import { put } from '@vercel/blob'
+import { Resvg } from '@resvg/resvg-js'
 
 // ─── Protocol constants ───────────────────────────────────────────────────────
 
@@ -155,9 +156,13 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
-async function generateCreative(args: Record<string, string>): Promise<object> {
+async function generateCreative(args: Record<string, string>) {
   const { business_name, iab_category, description } = args
   const svg = await generateCreativeSvg(business_name, iab_category, description)
+
+  // Convert SVG → PNG so Claude.ai can render the preview inline
+  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 728 } })
+  const pngBase64 = resvg.render().asPng().toString('base64')
 
   const token = process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN
   const fileName = `creative-${Date.now()}.svg`
@@ -168,7 +173,20 @@ async function generateCreative(args: Record<string, string>): Promise<object> {
     addRandomSuffix: true,
   })
 
-  return { creative_url: blob.url, file_name: fileName, file_type: 'image/svg+xml' }
+  return {
+    content: [
+      { type: 'image', data: pngBase64, mimeType: 'image/png' },
+      {
+        type: 'text',
+        text: JSON.stringify({
+          creative_url: blob.url,
+          file_name: fileName,
+          file_type: 'image/svg+xml',
+          next_step: "Show the user the banner preview above. Ask if they'd like to use this creative or generate a different one. If they approve, pass creative_url to submit_campaign.",
+        }, null, 2),
+      },
+    ],
+  }
 }
 
 async function uploadCreative(args: Record<string, string>): Promise<object> {
@@ -334,8 +352,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
   const strArgs = args as Record<string, string>
 
   if (name === 'generate_creative') {
-    const result = await generateCreative(strArgs)
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+    return await generateCreative(strArgs)
   }
 
   if (name === 'upload_creative') {
