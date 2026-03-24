@@ -37,6 +37,7 @@ export type UIPhase =
   | 'uploading'
   | 'reviewing'
   | 'submitted'
+  | 'dashboard'
 
 export interface StreamEvent {
   type:

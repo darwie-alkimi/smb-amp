@@ -3,6 +3,7 @@ const ALLOWED_TYPES = [
   'image/png',
   'image/gif',
   'image/webp',
+  'image/svg+xml',
   'video/mp4',
   'application/zip',
   'text/html',

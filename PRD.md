@@ -40,6 +40,7 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 - Conversational UI (chatbot) powered by Claude `claude-opus-4-6`
 - Campaign field collection via streaming chat with tool use
 - Creative asset upload (validated client-side, stored server-side)
+- **AI creative generation** — Claude `claude-haiku-4-5` generates a branded SVG banner from business name + sector; available in both web UI and MCP plugin
 - Auto-create Beeswax advertiser per SMB submission
 - Beeswax draft campaign + line item creation via API
 - Campaign summary review screen before submission
@@ -64,7 +65,10 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 ```
 1. Landing screen → "New Campaign"
 2. Chatbot collects 8 fields one at a time
-3. Creative upload widget appears inline in chat
+3. Creative step appears inline in chat — three options:
+   a. Upload file (JPG, PNG, GIF, WebP, MP4, HTML5 ZIP)
+   b. Paste URL (Google Drive, Dropbox, direct image link)
+   c. ✨ Generate with AI — Claude generates a branded SVG banner; preview + confirm or retry
 4. Campaign summary card — user reviews all inputs
 5. Confirm → create Beeswax advertiser → create campaign draft → create line item
 6. SMB-friendly success screen (campaign name, dates, budget, email confirmation note)
@@ -84,7 +88,7 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 | Budget (total) | Yes | USD, no minimum enforced (draft only) |
 | Geography | Yes | Country/state level, plain language |
 | Business sector | Yes | Asked in plain language, mapped to IAB category code |
-| Creative upload | Yes | JPG, PNG, GIF, WebP, MP4, HTML5 ZIP; max 50MB |
+| Creative | Yes | Upload file (JPG, PNG, GIF, WebP, SVG, MP4, HTML5 ZIP; max 10MB), paste URL, or AI-generate SVG banner |
 
 **Removed from original PRD:**
 - Estimated impressions — removed (no CPM default needed for a draft)
@@ -120,7 +124,8 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 |-------|-----------|
 | Framework | Next.js 14 (App Router), TypeScript |
 | Frontend | React, Tailwind CSS |
-| AI | Anthropic Claude `claude-opus-4-6` with streaming + tool use |
+| AI (chat) | Anthropic Claude `claude-opus-4-6` with streaming + tool use |
+| AI (creative) | Anthropic Claude `claude-haiku-4-5` — generates SVG banners from business context |
 | Backend | Next.js API routes (Node.js runtime) |
 | DSP | Beeswax REST API (Basic auth) |
 | File storage | Local validation only (S3 upload is next step) |
@@ -133,7 +138,9 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 | `src/app/page.tsx` | Full chat UI, sidebar, upload widget, summary, success |
 | `src/app/api/chat/route.ts` | Streaming Claude endpoint with agentic tool loop |
 | `src/app/api/campaign/submit/route.ts` | Beeswax submission endpoint |
-| `src/app/api/upload/route.ts` | Creative file validation |
+| `src/app/api/upload/route.ts` | Creative file validation (JPG, PNG, GIF, WebP, SVG, MP4, ZIP) |
+| `src/app/api/creative/generate/route.ts` | AI creative generation endpoint (browser) |
+| `src/lib/creative-generator.ts` | Shared Claude SVG generation logic (browser + MCP) |
 | `src/lib/beeswax.ts` | Beeswax integration (mock + live) |
 | `src/lib/campaign-config.ts` | Claude system prompt + tool definitions |
 | `src/lib/types.ts` | Shared TypeScript types |
@@ -257,3 +264,54 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 - GitHub: `https://github.com/darwie-alkimi/smb-amp.git` (commit: `0d3bf00`)
 
 **Status:** Advertiser + campaign creating successfully in Beeswax sandbox. Targeting + line item ready for production. Creative upload is next.
+
+---
+
+## Session 3 — 2026-03-23
+
+**What was built:**
+- MCP (Model Context Protocol) server endpoint so users can create campaigns directly inside Claude.ai or Claude Code — no web app visit needed
+- `src/app/api/mcp/route.ts` — HTTP endpoint implementing Streamable HTTP transport (POST) + SSE backwards-compat (GET)
+- `src/lib/mcp-server.ts` — two MCP tools: `submit_campaign` and `validate_campaign_fields`
+- App deployed to Vercel: **https://smb-amp.vercel.app**
+- MCP server registered in `~/.claude/mcp.json` for local Claude Code use
+
+**MCP tools:**
+- `submit_campaign` — collects all 8 required fields + optional creative (URL or base64), calls `createBeeswaxDraft()` from `src/lib/beeswax.ts`
+- `validate_campaign_fields` — dry-run validation, no Beeswax call
+
+**Creative handling:**
+- User provides URL → server fetches and encodes to base64 server-side
+- User provides local file path (Claude Code) → Claude reads it with Read tool, passes base64 + filename + MIME type
+
+**Decisions made:**
+- MCP protocol implemented manually (JSON-RPC over HTTP) — avoids Next.js App Router incompatibility with MCP SDK's SSE transport classes
+- `@modelcontextprotocol/sdk` installed as dependency for future use
+- Fixed pre-existing TypeScript error: added `click_url` to `FIELD_LABELS` in `types.ts`
+
+**Environment:**
+- MCP endpoint: `https://smb-amp.vercel.app/api/mcp`
+- Claude Code MCP config: `~/.claude/mcp.json`
+- Vercel auto-deploys from `main` branch of `darwie-alkimi/smb-amp`
+
+**Status:** MCP server deployed and registered. Restart Claude Code to load it, then test with "Help me create an ad campaign for my restaurant".
+
+---
+
+## Session 4 — 2026-03-24
+
+**What was built:**
+- AI creative generation — SS-02 from Confluence PRD (partial)
+- `src/lib/creative-generator.ts` — shared Claude `claude-haiku-4-5` SVG banner generator; seeded with business name + IAB sector + optional style hint
+- `src/app/api/creative/generate/route.ts` — browser endpoint, returns SVG string
+- `src/app/page.tsx` — `FileUploadWidget` gains a 3rd tab "✨ Generate"; shows description textarea, generates SVG, renders inline preview, "Use this" / "Try again"
+- `src/lib/mcp-server.ts` — new `generate_creative` MCP tool; generates SVG → uploads to Vercel Blob → returns `creative_url` for `submit_campaign`
+- `src/app/api/upload/route.ts` — added `image/svg+xml` to allowed types
+
+**Decisions made:**
+- Used Claude (Anthropic) for creative generation instead of DALL-E/Gemini — no new API key required, uses existing `ANTHROPIC_API_KEY`
+- SVG format chosen: vector, scales to any IAB size, Claude generates well with `claude-haiku-4-5`
+- Shared `creative-generator.ts` lib ensures identical generation logic for both browser and MCP paths
+- MCP path stores SVG in Vercel Blob and returns URL; browser path sends SVG through existing upload route
+
+**Status:** AI creative generation built for both browser and MCP. No new env vars required.

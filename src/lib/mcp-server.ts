@@ -3,12 +3,16 @@
  *
  * Tools:
  *   upload_creative          — upload a creative file to Vercel Blob, returns URL
+ *   generate_creative        — AI-generate an SVG banner, store in Vercel Blob, return URL
  *   submit_campaign          — collect fields then create Beeswax draft
  *   validate_campaign_fields — dry-run validation, no Beeswax call
+ *   get_campaign_stats       — return simulated performance stats as markdown
  */
 
 import type { CampaignState } from './types'
 import { createBeeswaxDraft } from './beeswax'
+import { generateCreativeSvg } from './creative-generator'
+import { getMockStats } from './mock-stats'
 import { put } from '@vercel/blob'
 
 // ─── Protocol constants ───────────────────────────────────────────────────────
@@ -19,6 +23,27 @@ export const PROTOCOL_VERSION = '2024-11-05'
 // ─── Tool definitions (MCP JSON Schema format) ───────────────────────────────
 
 export const TOOLS = [
+  {
+    name: 'generate_creative',
+    description: `Generate an AI ad creative banner using the business info already collected, then return a URL to use in submit_campaign.
+
+Call this when the user doesn't have a creative file ready and wants AI to make one.
+The tool uses Claude to generate a professional SVG banner tailored to the business name and industry.
+
+Steps:
+1. Call this tool with business_name and iab_category (already collected)
+2. Optionally pass a description for style/mood (e.g. "warm and friendly", "luxury feel")
+3. This returns a creative_url — pass it directly to submit_campaign`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        business_name: { type: 'string', description: 'Business name' },
+        iab_category:  { type: 'string', description: 'IAB category code (e.g. "IAB8")' },
+        description:   { type: 'string', description: 'Optional style or mood hint for the creative' },
+      },
+      required: ['business_name'],
+    },
+  },
   {
     name: 'upload_creative',
     description: `Upload an ad creative file (image or video) and get back a URL to use in submit_campaign.
@@ -105,9 +130,41 @@ Creative (optional but recommended):
       required: [],
     },
   },
+  {
+    name: 'get_campaign_stats',
+    description: 'Show simulated performance stats for a submitted campaign. Call after submit_campaign succeeds. Returns a markdown report with KPIs, budget utilisation, and a 7-day spend breakdown. Clearly labelled as simulated.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        budget:        { type: 'string', description: 'Total budget in USD (e.g. "2000")' },
+        start_date:    { type: 'string', description: 'Campaign start date YYYY-MM-DD' },
+        end_date:      { type: 'string', description: 'Campaign end date YYYY-MM-DD' },
+        iab_category:  { type: 'string', description: 'IAB category code e.g. "IAB8"' },
+        campaign_name: { type: 'string', description: 'Campaign name for the report header' },
+        campaign_id:   { type: 'string', description: 'Beeswax campaign ID — used as seed for consistent results' },
+      },
+      required: ['budget', 'start_date', 'end_date'],
+    },
+  },
 ]
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
+
+async function generateCreative(args: Record<string, string>): Promise<object> {
+  const { business_name, iab_category, description } = args
+  const svg = await generateCreativeSvg(business_name, iab_category, description)
+
+  const token = process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN
+  const fileName = `creative-${Date.now()}.svg`
+  const blob = await put(fileName, svg, {
+    access: 'public',
+    contentType: 'image/svg+xml',
+    token,
+    addRandomSuffix: true,
+  })
+
+  return { creative_url: blob.url, file_name: fileName, file_type: 'image/svg+xml' }
+}
 
 async function uploadCreative(args: Record<string, string>): Promise<object> {
   const { file_base64, file_name, file_type } = args
@@ -201,10 +258,76 @@ function validateFields(args: Record<string, string>): object {
   }
 }
 
+function getCampaignStats(args: Record<string, string>): object {
+  const stats = getMockStats({
+    budget:       args.budget,
+    start_date:   args.start_date,
+    end_date:     args.end_date,
+    iab_category: args.iab_category,
+    campaign_id:  args.campaign_id,
+  })
+
+  const name = args.campaign_name ?? 'Campaign'
+  const fmt = (n: number) => n.toLocaleString('en-US')
+  const fmtUsd = (n: number) =>
+    '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  const diff = stats.timelinePct - stats.budgetPct
+  const light = diff > 25 ? '🔴' : diff > 10 ? '🟡' : stats.budgetPct > stats.timelinePct + 10 ? '🔴' : '🟢'
+
+  const bar = (pct: number) => {
+    const filled = Math.min(20, Math.round(pct / 5))
+    return '█'.repeat(filled) + '░'.repeat(20 - filled)
+  }
+
+  const dayLabels = ['6d ago  ', '5d ago  ', '4d ago  ', '3d ago  ', '2d ago  ', 'Yesterday', 'Today   ']
+  const maxSpend = Math.max(...stats.dailySpend, 0.01)
+  const dailyRows = stats.dailySpend
+    .map((v, i) => {
+      const len = Math.round((v / maxSpend) * 20)
+      const b = '█'.repeat(len) + '░'.repeat(20 - len)
+      return `${dayLabels[i]} │${b}│ ${fmtUsd(v)}`
+    })
+    .join('\n')
+
+  const md = `## ${name} — Performance Snapshot
+> ⚠️ *Simulated data. Real reporting available once campaign goes live.*
+
+### Key Metrics
+| Metric | Value | Status |
+|--------|-------|--------|
+| Impressions | ${fmt(stats.impressions)} | — |
+| Clicks | ${fmt(stats.clicks)} | — |
+| CTR | ${stats.ctr.toFixed(2)}% | — |
+| Spend | ${fmtUsd(stats.spend)} of ${fmtUsd(stats.budget)} | ${light} |
+| CPM | ${fmtUsd(stats.cpm)} | — |
+| ROAS | ${stats.roas.toFixed(1)}× | — |
+
+### Budget Utilisation
+\`${bar(stats.budgetPct)} ${stats.budgetPct}%\`
+
+### Timeline Progress
+\`${bar(stats.timelinePct)} ${stats.timelinePct}%\`
+
+### 7-Day Spend
+\`\`\`
+${dailyRows}
+\`\`\`
+---
+*Benchmarks based on ${stats.iabCategory} industry averages.*`
+
+  return { content: [{ type: 'text', text: md }] }
+}
+
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 export async function handleToolCall(name: string, args: Record<string, unknown>) {
   const strArgs = args as Record<string, string>
+
+  if (name === 'generate_creative') {
+    const result = await generateCreative(strArgs)
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+  }
 
   if (name === 'upload_creative') {
     const result = await uploadCreative(strArgs)
@@ -219,6 +342,10 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
   if (name === 'validate_campaign_fields') {
     const result = validateFields(strArgs)
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+  }
+
+  if (name === 'get_campaign_stats') {
+    return getCampaignStats(strArgs)
   }
 
   throw new Error(`Unknown tool: ${name}`)

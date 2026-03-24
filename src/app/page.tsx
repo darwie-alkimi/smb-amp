@@ -9,6 +9,7 @@ import type {
   BeeswaxDraftResult,
 } from '@/lib/types'
 import { ALL_FIELDS, FIELD_LABELS } from '@/lib/types'
+import { getMockStats } from '@/lib/mock-stats'
 
 function uid() {
   return Math.random().toString(36).slice(2)
@@ -101,14 +102,14 @@ function Sidebar({ state, phase }: { state: CampaignState; phase: UIPhase }) {
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
-              phase === 'submitted'
+              phase === 'submitted' || phase === 'dashboard'
                 ? 'bg-green-500/15 text-green-400'
                 : phase === 'reviewing'
                 ? 'bg-blue-500/15 text-blue-400'
                 : 'bg-accent/20 text-accent-light'
             }`}
           >
-            {phase === 'submitted' ? 'Submitted' : phase === 'reviewing' ? 'Review' : 'Draft'}
+            {phase === 'submitted' || phase === 'dashboard' ? 'Submitted' : phase === 'reviewing' ? 'Review' : 'Draft'}
           </span>
           <span className="text-[10px] text-white/30">
             {ALL_FIELDS.filter((f) => state[f]).length + (hasCreative ? 1 : 0)}/
@@ -150,16 +151,21 @@ function MessageBubble({ msg, isStreaming }: { msg: ChatMessage; isStreaming: bo
 function FileUploadWidget({
   onUpload,
   onUrl,
+  campaignState,
 }: {
   onUpload: (file: File) => Promise<void>
   onUrl: (url: string) => Promise<void>
+  campaignState?: CampaignState
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [tab, setTab] = useState<'file' | 'url'>('file')
+  const [tab, setTab] = useState<'file' | 'url' | 'generate'>('file')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [error, setError] = useState('')
+  const [description, setDescription] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [generatedSvg, setGeneratedSvg] = useState<string | null>(null)
 
   const handleFile = async (file: File) => {
     setError('')
@@ -184,19 +190,60 @@ function FileUploadWidget({
     }
   }
 
+  const handleGenerate = async () => {
+    setError('')
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/creative/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessName: campaignState?.business_name ?? 'My Business',
+          iabCategory: campaignState?.iab_category,
+          description,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Generation failed')
+      setGeneratedSvg(data.svg)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Generation failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleUseGenerated = async () => {
+    if (!generatedSvg) return
+    setError('')
+    setUploading(true)
+    try {
+      const blob = new Blob([generatedSvg], { type: 'image/svg+xml' })
+      const file = new File([blob], 'ai-generated-creative.svg', { type: 'image/svg+xml' })
+      await onUpload(file)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to use generated creative')
+      setUploading(false)
+    }
+  }
+
+  const svgDataUrl = generatedSvg
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(generatedSvg)}`
+    : null
+
   return (
     <div className="mx-auto my-4 max-w-sm">
       {/* Tabs */}
       <div className="mb-3 flex rounded-lg bg-surface-elevated p-1">
-        {(['file', 'url'] as const).map((t) => (
+        {(['file', 'url', 'generate'] as const).map((t) => (
           <button
             key={t}
-            onClick={() => { setTab(t); setError('') }}
+            onClick={() => { setTab(t); setError(''); setGeneratedSvg(null) }}
             className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
               tab === t ? 'bg-accent text-white' : 'text-white/40 hover:text-white/70'
             }`}
           >
-            {t === 'file' ? '⬆ Upload file' : '🔗 Paste URL'}
+            {t === 'file' ? '⬆ Upload' : t === 'url' ? '🔗 URL' : '✨ Generate'}
           </button>
         ))}
       </div>
@@ -230,12 +277,12 @@ function FileUploadWidget({
               {uploading ? 'Uploading…' : 'Upload your ad creative'}
             </p>
             <p className="mt-1 text-xs text-white/30">
-              JPG, PNG, GIF, WebP, MP4, HTML5 ZIP · max 50 MB
+              JPG, PNG, GIF, WebP, MP4, HTML5 ZIP · max 10 MB
             </p>
             <p className="mt-1 text-xs text-white/25">Drag & drop or click to browse</p>
           </div>
         </>
-      ) : (
+      ) : tab === 'url' ? (
         <div className="rounded-xl border border-surface-border bg-surface-elevated p-4">
           <p className="mb-2 text-xs text-white/50">
             Paste a direct link to your creative (Google Drive, Dropbox, or image URL)
@@ -255,6 +302,61 @@ function FileUploadWidget({
           >
             {uploading ? 'Confirming…' : 'Use this URL'}
           </button>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-surface-border bg-surface-elevated p-4">
+          {!generatedSvg ? (
+            <>
+              <p className="mb-2 text-xs text-white/50">
+                AI will generate a banner based on{' '}
+                <span className="text-white/70">{campaignState?.business_name ?? 'your business'}</span>.
+                Add a style hint below, or leave blank.
+              </p>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder='e.g. "warm and welcoming", "bold and modern", "luxury feel"'
+                rows={2}
+                className="w-full resize-none rounded-lg border border-surface-border bg-[#0d0d0f] px-3 py-2 text-sm text-white/80 placeholder-white/20 outline-none focus:border-accent/50"
+              />
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="mt-3 w-full rounded-lg bg-accent py-2 text-xs font-medium text-white transition-colors hover:bg-accent-light disabled:opacity-40"
+              >
+                {generating ? 'Generating…' : '✨ Generate creative'}
+              </button>
+              {generating && (
+                <p className="mt-2 text-center text-[10px] text-white/30">Usually takes 5–10 seconds…</p>
+              )}
+            </>
+          ) : (
+            <>
+              {svgDataUrl && (
+                <img
+                  src={svgDataUrl}
+                  alt="AI-generated creative"
+                  className="w-full rounded-lg border border-surface-border"
+                />
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => { setGeneratedSvg(null); setError('') }}
+                  disabled={uploading}
+                  className="flex-1 rounded-lg border border-surface-border py-2 text-xs font-medium text-white/60 hover:bg-surface-elevated disabled:opacity-40"
+                >
+                  Try again
+                </button>
+                <button
+                  onClick={handleUseGenerated}
+                  disabled={uploading}
+                  className="flex-1 rounded-lg bg-accent py-2 text-xs font-medium text-white hover:bg-accent-light disabled:opacity-40"
+                >
+                  {uploading ? 'Saving…' : 'Use this creative'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -318,9 +420,112 @@ function CampaignSummary({
   )
 }
 
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+function CampaignDashboard({ state, onBack }: { state: CampaignState; onBack: () => void }) {
+  const stats = getMockStats({
+    budget:       state.budget ?? '0',
+    start_date:   state.start_date ?? new Date().toISOString().split('T')[0],
+    end_date:     state.end_date ?? new Date().toISOString().split('T')[0],
+    iab_category: state.iab_category,
+  })
+
+  const fmt = (n: number) => n.toLocaleString('en-US')
+  const fmtUsd = (n: number) =>
+    '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  const diff = stats.timelinePct - stats.budgetPct
+  const lightColor =
+    diff > 25 ? 'bg-red-400' :
+    diff > 10 ? 'bg-yellow-400' :
+    stats.budgetPct > stats.timelinePct + 10 ? 'bg-red-400' :
+    'bg-green-400'
+
+  const kpis = [
+    { label: 'Impressions', value: fmt(stats.impressions) },
+    { label: 'Clicks',      value: fmt(stats.clicks) },
+    { label: 'CTR',         value: `${stats.ctr.toFixed(2)}%` },
+    { label: 'ROAS',        value: `${stats.roas.toFixed(1)}×` },
+  ]
+
+  return (
+    <div className="mx-auto max-w-md">
+      <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-elevated">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-surface-border px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-white">Performance</p>
+            <p className="text-xs text-white/40">{state.campaign_name}</p>
+          </div>
+          <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
+            Simulated
+          </span>
+        </div>
+
+        {/* KPI grid */}
+        <div className="grid grid-cols-2 divide-x divide-y divide-surface-border border-b border-surface-border">
+          {kpis.map(({ label, value }) => (
+            <div key={label} className="px-5 py-4">
+              <p className="text-[10px] uppercase tracking-widest text-white/30">{label}</p>
+              <p className="mt-1 text-xl font-semibold text-white">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Spend row */}
+        <div className="flex items-center justify-between border-b border-surface-border px-5 py-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-white/30">Spend</p>
+            <p className="mt-0.5 text-sm font-semibold text-white">
+              {fmtUsd(stats.spend)}{' '}
+              <span className="text-xs font-normal text-white/40">of {fmtUsd(stats.budget)}</span>
+            </p>
+          </div>
+          <span className={`h-2.5 w-2.5 rounded-full ${lightColor}`} />
+        </div>
+
+        {/* Progress bars */}
+        <div className="px-5 py-4 space-y-3 border-b border-surface-border">
+          <div>
+            <div className="mb-1.5 flex justify-between text-[10px] text-white/30">
+              <span>Budget used</span>
+              <span>{stats.budgetPct}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-white/10">
+              <div className="h-1.5 rounded-full bg-accent" style={{ width: `${stats.budgetPct}%` }} />
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 flex justify-between text-[10px] text-white/30">
+              <span>Timeline</span>
+              <span>{stats.timelinePct}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-white/10">
+              <div className="h-1.5 rounded-full bg-white/30" style={{ width: `${stats.timelinePct}%` }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4">
+          <p className="mb-3 text-[10px] text-white/25">
+            Stats are simulated from campaign inputs. Real-time data available once live.
+          </p>
+          <button
+            onClick={onBack}
+            className="w-full rounded-xl border border-surface-border py-2.5 text-xs font-medium text-white/60 transition-colors hover:border-accent/50 hover:bg-surface hover:text-white/90"
+          >
+            ← Back to summary
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Success ──────────────────────────────────────────────────────────────────
 
-function SuccessScreen({ result, state }: { result: BeeswaxDraftResult; state: CampaignState }) {
+function SuccessScreen({ result, state, onViewPerformance }: { result: BeeswaxDraftResult; state: CampaignState; onViewPerformance: () => void }) {
   return (
     <div className="mx-auto max-w-sm text-center">
       <div className="mb-4 flex justify-center">
@@ -358,6 +563,12 @@ function SuccessScreen({ result, state }: { result: BeeswaxDraftResult; state: C
       {result.mock && (
         <p className="mt-2 text-[10px] text-white/20">Demo mode — no real campaign was created</p>
       )}
+      <button
+        onClick={onViewPerformance}
+        className="mt-4 w-full rounded-xl border border-surface-border py-2.5 text-xs font-medium text-white/60 transition-colors hover:border-accent/50 hover:bg-surface-elevated hover:text-white/90"
+      >
+        View Performance →
+      </button>
     </div>
   )
 }
@@ -593,7 +804,7 @@ export default function Home() {
           ))}
 
           {phase === 'uploading' && (
-            <FileUploadWidget onUpload={handleCreativeUpload} onUrl={handleCreativeUrl} />
+            <FileUploadWidget onUpload={handleCreativeUpload} onUrl={handleCreativeUrl} campaignState={campaignState} />
           )}
 
           {phase === 'reviewing' && (
@@ -609,7 +820,13 @@ export default function Home() {
 
           {phase === 'submitted' && submitResult && (
             <div className="py-6">
-              <SuccessScreen result={submitResult} state={campaignState} />
+              <SuccessScreen result={submitResult} state={campaignState} onViewPerformance={() => setPhase('dashboard')} />
+            </div>
+          )}
+
+          {phase === 'dashboard' && (
+            <div className="py-6">
+              <CampaignDashboard state={campaignState} onBack={() => setPhase('submitted')} />
             </div>
           )}
 
