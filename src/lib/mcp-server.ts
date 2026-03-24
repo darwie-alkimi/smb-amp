@@ -158,20 +158,27 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
 
 async function generateCreative(args: Record<string, string>) {
   const { business_name, iab_category, description } = args
-  const svg = await generateCreativeSvg(business_name, iab_category, description)
+  const token = process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN
+  const ts = Date.now()
 
-  // Convert SVG → PNG so Claude.ai can render the preview inline
-  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 728 } })
+  // Generate both IAB formats in parallel
+  const [svg728, svg300] = await Promise.all([
+    generateCreativeSvg(business_name, iab_category, description, '728x90'),
+    generateCreativeSvg(business_name, iab_category, description, '300x250'),
+  ])
+
+  // Convert leaderboard SVG → PNG for inline preview in Claude.ai
+  const resvg = new Resvg(svg728, { fitTo: { mode: 'width', value: 728 } })
   const pngBase64 = resvg.render().asPng().toString('base64')
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN
-  const fileName = `creative-${Date.now()}.svg`
-  const blob = await put(fileName, svg, {
-    access: 'public',
-    contentType: 'image/svg+xml',
-    token,
-    addRandomSuffix: true,
-  })
+  // Upload both SVGs to Vercel Blob in parallel
+  const [blob728, blob300] = await Promise.all([
+    put(`creative-728x90-${ts}.svg`, svg728, { access: 'public', contentType: 'image/svg+xml', token, addRandomSuffix: true }),
+    put(`creative-300x250-${ts}.svg`, svg300, { access: 'public', contentType: 'image/svg+xml', token, addRandomSuffix: true }),
+  ])
+
+  const campaignName = encodeURIComponent(business_name ?? 'Campaign')
+  const previewUrl = `https://smb-amp.vercel.app/preview?leaderboard=${encodeURIComponent(blob728.url)}&creative=${encodeURIComponent(blob300.url)}&name=${campaignName}`
 
   return {
     content: [
@@ -179,11 +186,11 @@ async function generateCreative(args: Record<string, string>) {
       {
         type: 'text',
         text: JSON.stringify({
-          creative_url: blob.url,
-          file_name: fileName,
-          file_type: 'image/svg+xml',
-          publisher_preview_url: `https://smb-amp.vercel.app/preview?creative=${encodeURIComponent(blob.url)}&name=${encodeURIComponent(args.business_name ?? 'Campaign')}`,
-          next_step: "Show the user the banner preview image above, then share the publisher_preview_url as a clickable link so they can see the creative rendered on a mock publisher site. Ask if they'd like to use this creative or generate a different one. If they approve, pass creative_url to submit_campaign.",
+          creative_url: blob300.url,
+          creative_url_leaderboard: blob728.url,
+          creative_url_mpu: blob300.url,
+          publisher_preview_url: previewUrl,
+          next_step: "Show the user the leaderboard banner preview image above, then share the publisher_preview_url as a clickable link so they can see both creatives rendered on a mock Daily Telegraph publisher page. Ask if they'd like to use these creatives or generate new ones. If they approve, pass creative_url to submit_campaign.",
         }, null, 2),
       },
     ],

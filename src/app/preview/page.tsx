@@ -70,7 +70,10 @@ function AdSlot({ width, height, creative }: { width: number; height: number; cr
 
 function PreviewContent() {
   const params = useSearchParams()
-  const creative = params.get('creative') ? decodeURIComponent(params.get('creative')!) : null
+  // leaderboard = 728×90 URL; creative = 300×250 MPU URL (also fallback for leaderboard)
+  const leaderboard = params.get('leaderboard') ? decodeURIComponent(params.get('leaderboard')!) : null
+  const mpu = params.get('creative') ? decodeURIComponent(params.get('creative')!) : null
+  const leaderboardCreative = leaderboard ?? mpu
   const campaignName = params.get('name') ? decodeURIComponent(params.get('name')!) : 'Campaign Preview'
 
   return (
@@ -138,7 +141,7 @@ function PreviewContent() {
       {/* Leaderboard ad (728×90) */}
       <div className="bg-[#f7f7f7] border-b border-[#e0e0e0] py-2">
         <div className="max-w-[1200px] mx-auto px-4 flex justify-center">
-          <AdSlot width={728} height={90} creative={creative} />
+          <AdSlot width={728} height={90} creative={leaderboardCreative} />
         </div>
       </div>
 
@@ -202,7 +205,7 @@ function PreviewContent() {
 
             {/* Inline MPU */}
             <div className="float-right ml-6 mb-4">
-              <AdSlot width={300} height={250} creative={creative} />
+              <AdSlot width={300} height={250} creative={mpu} />
             </div>
 
             {LEAD.body.slice(2).map((p, i) => (
@@ -217,7 +220,7 @@ function PreviewContent() {
 
             {/* Sidebar MPU */}
             <div className="mb-5">
-              <AdSlot width={300} height={250} creative={creative} />
+              <AdSlot width={300} height={250} creative={mpu} />
             </div>
 
             {/* Latest stories */}
