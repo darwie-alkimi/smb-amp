@@ -27,8 +27,9 @@ export const TOOLS = [
     name: 'generate_creative',
     description: `Generate an AI ad creative banner using the business info already collected, then return a URL to use in submit_campaign.
 
-Call this when the user doesn't have a creative file ready and wants AI to make one.
-The tool uses Claude to generate a professional SVG banner tailored to the business name and industry.
+Proactively offer this to users who haven't provided a creative file. When all required campaign fields are collected but no creative has been supplied, ask the user: "Would you like me to generate an AI banner for your campaign, or do you have your own creative to upload?"
+
+If the user wants AI generation, call this tool immediately with the business_name and iab_category already collected. Do NOT wait for the user to ask first.
 
 Steps:
 1. Call this tool with business_name and iab_category (already collected)
@@ -90,9 +91,11 @@ Required fields to collect:
      Sports          → IAB17      Education       → IAB5     Beauty     → IAB18
      Home/Garden     → IAB10      Pets            → IAB16    Business/B2B → IAB3
 
-Creative (optional but recommended):
+Creative (required — always handle before submitting):
 - If the user has a file: call upload_creative FIRST, then pass the returned URL as creative_url
-- If the user has a public URL already: pass it directly as creative_url
+- If the user has a public URL: pass it directly as creative_url
+- If the user has no creative: ask if they want AI to generate one, then call generate_creative and pass its creative_url
+- Do NOT call submit_campaign without first resolving the creative step
 
 After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with the same budget, start_date, end_date, iab_category, and campaign_name to show the user their performance projections.`,
     inputSchema: {
