@@ -92,7 +92,9 @@ Required fields to collect:
 
 Creative (optional but recommended):
 - If the user has a file: call upload_creative FIRST, then pass the returned URL as creative_url
-- If the user has a public URL already: pass it directly as creative_url`,
+- If the user has a public URL already: pass it directly as creative_url
+
+After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with the same budget, start_date, end_date, iab_category, and campaign_name to show the user their performance projections.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -216,7 +218,11 @@ async function submitCampaign(args: Record<string, string>): Promise<object> {
     creative_file_type,
   }
 
-  return createBeeswaxDraft(campaign)
+  const result = await createBeeswaxDraft(campaign)
+  return {
+    ...result,
+    next_step: `Campaign submitted. Now call get_campaign_stats with budget="${args.budget}", start_date="${args.start_date}", end_date="${args.end_date}", iab_category="${args.iab_category ?? ''}", campaign_name="${args.campaign_name}" to show the user their performance projections.`,
+  }
 }
 
 function validateFields(args: Record<string, string>): object {
