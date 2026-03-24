@@ -3,185 +3,269 @@
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
-// ─── Mock publisher content ───────────────────────────────────────────────────
+// Telegraph brand colours
+const T_BLUE = '#005689'
+const T_DARK = '#1a1a1a'
 
-const ARTICLES = [
-  {
-    headline: 'Central Banks Signal Cautious Optimism as Markets Rally',
-    byline: 'By Sarah Mitchell · Economics Editor',
-    body: `Global equity markets surged on Wednesday after central bank officials hinted at a more gradual approach to monetary tightening, easing fears of an imminent recession. The S&P 500 climbed 1.4% while the FTSE 100 added 0.9%, with technology and consumer discretionary sectors leading gains.
+// ─── Mock content ─────────────────────────────────────────────────────────────
 
-Investors had been bracing for more hawkish signals, but policymakers struck a careful tone, pointing to resilient employment data and moderating inflation as reasons to proceed carefully. "We are data-dependent and will respond appropriately," said one official in prepared remarks.
+const LEAD = {
+  tag: 'EXCLUSIVE',
+  headline: 'Bank of England holds rates as inflation falls to three-year low',
+  standfirst: 'Governor signals potential for cuts in the second half of the year as wage growth cools faster than expected',
+  byline: 'Ambrose Evans-Pritchard',
+  role: 'Economics Editor',
+  timestamp: '24 March 2026 • 9:41am',
+  body: [
+    'The Bank of England voted unanimously to hold interest rates at 4.75pc on Thursday, as a sharp fall in inflation to 2.1pc — its lowest since early 2023 — opened the door to reductions later in the year.',
+    '"The direction of travel is clear," Governor Andrew Bailey said at a press conference, adding that the Monetary Policy Committee would "act decisively" once it was confident that price stability had been restored on a durable basis.',
+    'Markets moved swiftly to price in two quarter-point cuts before year-end, sending sterling lower and pushing gilt yields to a six-month trough. The FTSE 100 gained 0.7pc as housebuilders and retailers led a broad-based rally.',
+    'The decision is a relief for millions of mortgage holders facing remortgaging in the coming months. The average two-year fixed rate fell to 4.3pc this week, according to data provider Moneyfacts, down from a peak above 6pc in mid-2023.',
+  ],
+}
 
-Analysts warned that the optimism may prove short-lived if forthcoming inflation prints surprise to the upside. Bond markets reflected the uncertainty, with yields edging lower across the curve.`,
-  },
-  {
-    headline: 'New Report Highlights Growth Opportunities for Local Businesses',
-    byline: 'By James Okafor · Business Reporter',
-    body: `A comprehensive survey of small and medium-sized businesses has found that digital advertising remains the most cost-effective channel for reaching new customers, with return on ad spend consistently outperforming traditional media across nearly every sector.
-
-The findings, compiled from over 4,000 SME operators, showed that businesses investing in programmatic display and video advertising saw an average revenue uplift of 23% year-on-year, compared with 9% for those relying on print and outdoor.
-
-Industry observers say the results reflect a permanent shift in consumer behaviour accelerated by the pandemic, with audiences now spending significantly more time with digital content across desktop and mobile devices.`,
-  },
+const SIDEBAR_STORIES = [
+  { tag: 'POLITICS', headline: 'Sunak faces new Tory revolt over planning reform bill', time: '1h ago' },
+  { tag: 'BUSINESS', headline: 'Rolls-Royce shares surge on record small modular reactor order', time: '2h ago' },
+  { tag: 'MONEY', headline: 'Five ways to protect your savings as rate cuts loom', time: '3h ago' },
+  { tag: 'WORLD', headline: 'Zelensky arrives in Washington for talks with Trump administration', time: '4h ago' },
 ]
 
-// ─── Ad slot components ───────────────────────────────────────────────────────
+const MOST_READ = [
+  'The quiet village where house prices have doubled in a year',
+  'Why the 4-day week experiment has quietly been shelved by most firms',
+  'How to legally reduce your inheritance tax bill before the Budget',
+  'The best new electric cars for under £30,000 in 2026',
+  'Revealed: the UK\'s best and worst GP surgeries',
+]
 
-function AdSlot({
-  width, height, creative, label,
-}: {
-  width: number; height: number; creative: string | null; label: string
-}) {
+// ─── Ad slot ──────────────────────────────────────────────────────────────────
+
+function AdSlot({ width, height, creative }: { width: number; height: number; creative: string | null }) {
   return (
-    <div style={{ width, height }} className="relative flex-shrink-0 overflow-hidden bg-[#f0f0f0] border border-[#d0d0d0]">
+    <div
+      style={{ width, height, maxWidth: '100%' }}
+      className="relative flex-shrink-0 overflow-hidden bg-[#f5f5f5] border border-[#e0e0e0]"
+    >
       {creative ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={creative} alt="Advertisement" className="w-full h-full object-contain" />
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center text-[#aaa] text-[10px] uppercase tracking-widest gap-1">
-          <span>Advertisement</span>
-          <span className="text-[9px] text-[#ccc]">{width}×{height}</span>
+        <div className="w-full h-full flex flex-col items-center justify-center gap-1" style={{ color: '#bbb', fontFamily: 'Arial, sans-serif' }}>
+          <span className="text-[10px] uppercase tracking-widest">Advertisement</span>
+          <span className="text-[9px]" style={{ color: '#ccc' }}>{width}×{height}</span>
         </div>
       )}
-      <span className="absolute bottom-0 right-0 bg-[#00000022] text-[7px] text-white px-1 py-0.5 uppercase tracking-wider leading-none">
-        {label}
+      <span
+        className="absolute top-0 right-0 px-1 py-0.5 text-[7px] uppercase tracking-wider"
+        style={{ background: 'rgba(0,0,0,0.12)', color: 'rgba(255,255,255,0.9)', fontFamily: 'Arial, sans-serif', lineHeight: 1 }}
+      >
+        Ad
       </span>
     </div>
   )
 }
 
-// ─── Preview page ─────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 function PreviewContent() {
   const params = useSearchParams()
   const creative = params.get('creative') ? decodeURIComponent(params.get('creative')!) : null
   const campaignName = params.get('name') ? decodeURIComponent(params.get('name')!) : 'Campaign Preview'
 
-  const article = ARTICLES[0]
-  const sidebar = ARTICLES[1]
-
   return (
-    <div className="min-h-screen bg-[#f4f4f0]" style={{ fontFamily: 'Georgia, "Times New Roman", serif', color: '#1a1a1a' }}>
+    <div className="min-h-screen bg-white" style={{ fontFamily: 'Georgia, "Times New Roman", serif', color: T_DARK }}>
 
       {/* AMP preview bar */}
-      <div className="bg-[#1a1a2e] text-white text-[11px] px-4 py-1.5 flex items-center justify-between">
-        <span className="text-white/50">AMP · Ad Preview</span>
-        <span className="font-medium text-white/80 truncate max-w-[60%] text-right">{campaignName}</span>
+      <div className="text-white text-[11px] px-4 py-1.5 flex items-center justify-between" style={{ background: T_BLUE, fontFamily: 'Arial, sans-serif' }}>
+        <span className="opacity-70">AMP · Publisher Preview</span>
+        <span className="font-semibold opacity-90 truncate max-w-[60%] text-right">{campaignName}</span>
       </div>
 
-      {/* Publisher header */}
-      <header className="bg-white border-b border-[#ddd]">
-        <div className="max-w-[1080px] mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[#888] mb-0.5">Est. 1842</p>
-            <h1 className="text-3xl font-black tracking-tight leading-none" style={{ fontFamily: 'Georgia, serif' }}>
-              The Tribune
-            </h1>
+      {/* Top utility bar */}
+      <div className="bg-[#f7f7f7] border-b border-[#e0e0e0] px-4 py-1" style={{ fontFamily: 'Arial, sans-serif' }}>
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between text-[11px] text-[#666]">
+          <span>Tuesday 24 March 2026</span>
+          <div className="flex items-center gap-4">
+            <span className="cursor-default hover:underline">Sign in</span>
+            <span
+              className="px-3 py-0.5 text-white text-[11px] font-bold cursor-default"
+              style={{ background: T_BLUE, fontFamily: 'Arial, sans-serif' }}
+            >
+              Subscribe
+            </span>
           </div>
-          <div className="text-right text-[11px] text-[#666]">
-            <p>Tuesday, 24 March 2026</p>
-            <p className="text-[#999]">London Edition</p>
+        </div>
+      </div>
+
+      {/* Masthead */}
+      <header className="border-b-2 border-[#1a1a1a] px-4 py-3">
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex-1" />
+          <h1
+            className="text-center leading-none tracking-[-0.02em]"
+            style={{ fontFamily: '"Times New Roman", Georgia, serif', fontSize: '2.4rem', fontWeight: 700, letterSpacing: '-0.01em' }}
+          >
+            The Daily Telegraph
+          </h1>
+          <div className="flex-1 flex justify-end">
+            <span className="text-[10px] text-[#888] text-right leading-tight" style={{ fontFamily: 'Arial, sans-serif' }}>
+              Est. 1855<br />telegraph.co.uk
+            </span>
           </div>
         </div>
 
         {/* Nav */}
-        <div className="border-t border-[#111]">
-          <div className="max-w-[1080px] mx-auto px-4">
-            <nav className="flex gap-0 text-[12px] font-bold uppercase tracking-wider" style={{ fontFamily: 'Arial, sans-serif' }}>
-              {['Home', 'UK News', 'World', 'Business', 'Tech', 'Sport', 'Culture', 'Opinion'].map((item, i) => (
-                <span key={item} className={`px-3 py-2 cursor-default hover:bg-[#f4f4f0] ${i === 3 ? 'bg-[#1a1a2e] text-white' : 'text-[#1a1a1a]'}`}>
-                  {item}
-                </span>
-              ))}
-            </nav>
-          </div>
-        </div>
+        <nav className="max-w-[1200px] mx-auto mt-2 flex border-t border-[#ddd] pt-1" style={{ fontFamily: 'Arial, sans-serif' }}>
+          {['News', 'Opinion', 'Business', 'Money', 'Politics', 'Sport', 'Culture', 'Travel', 'Life'].map((item, i) => (
+            <span
+              key={item}
+              className="px-3 py-1.5 text-[12px] font-bold cursor-default"
+              style={{
+                color: i === 2 ? 'white' : T_DARK,
+                background: i === 2 ? T_BLUE : 'transparent',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {item}
+            </span>
+          ))}
+        </nav>
       </header>
 
       {/* Leaderboard ad (728×90) */}
-      <div className="bg-white border-b border-[#ddd]">
-        <div className="max-w-[1080px] mx-auto px-4 py-3 flex justify-center">
-          <AdSlot width={728} height={90} creative={creative} label="Leaderboard 728×90" />
+      <div className="bg-[#f7f7f7] border-b border-[#e0e0e0] py-2">
+        <div className="max-w-[1200px] mx-auto px-4 flex justify-center">
+          <AdSlot width={728} height={90} creative={creative} />
         </div>
       </div>
 
       {/* Section label */}
-      <div className="max-w-[1080px] mx-auto px-4 pt-4 pb-1">
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] font-black uppercase tracking-[0.15em] text-white bg-[#1a1a2e] px-2 py-0.5" style={{ fontFamily: 'Arial, sans-serif' }}>Business</span>
-          <div className="flex-1 border-t border-[#1a1a2e]" />
+      <div className="max-w-[1200px] mx-auto px-4 pt-4 pb-2">
+        <div className="flex items-center gap-2" style={{ fontFamily: 'Arial, sans-serif' }}>
+          <span
+            className="text-[11px] font-black uppercase tracking-[0.12em] px-2 py-0.5 text-white"
+            style={{ background: T_BLUE }}
+          >
+            Business
+          </span>
+          <div className="flex-1 border-t-2" style={{ borderColor: T_BLUE }} />
         </div>
       </div>
 
-      {/* Main content */}
-      <main className="max-w-[1080px] mx-auto px-4 py-4">
+      {/* Body */}
+      <main className="max-w-[1200px] mx-auto px-4 pb-10">
         <div className="flex gap-8">
 
           {/* Lead article */}
-          <article className="flex-1 min-w-0">
-            <h2 className="text-[28px] font-black leading-tight mb-2">{article.headline}</h2>
-            <p className="text-[11px] text-[#888] mb-4 uppercase tracking-wider" style={{ fontFamily: 'Arial, sans-serif' }}>{article.byline}</p>
+          <article className="flex-1 min-w-0 border-r border-[#e0e0e0] pr-8">
+            {/* Tag */}
+            <span
+              className="text-[10px] font-black uppercase tracking-widest mb-2 inline-block"
+              style={{ color: T_BLUE, fontFamily: 'Arial, sans-serif' }}
+            >
+              {LEAD.tag}
+            </span>
 
-            {/* Image placeholder */}
-            <div className="w-full h-48 bg-[#ddd] mb-4 flex items-center justify-center text-[#aaa] text-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
-              <span>Photo: Reuters</span>
+            {/* Headline */}
+            <h2
+              className="text-[30px] font-bold leading-tight mb-3"
+              style={{ fontFamily: '"Times New Roman", Georgia, serif' }}
+            >
+              {LEAD.headline}
+            </h2>
+
+            {/* Standfirst */}
+            <p className="text-[16px] leading-snug mb-3" style={{ color: '#444', fontFamily: '"Times New Roman", Georgia, serif' }}>
+              {LEAD.standfirst}
+            </p>
+
+            {/* Byline */}
+            <div className="flex items-center gap-2 py-2 border-t border-b border-[#e0e0e0] mb-4" style={{ fontFamily: 'Arial, sans-serif' }}>
+              <div>
+                <p className="text-[12px] font-bold" style={{ color: T_BLUE }}>{LEAD.byline}</p>
+                <p className="text-[11px]" style={{ color: '#888' }}>{LEAD.role} · {LEAD.timestamp}</p>
+              </div>
             </div>
 
-            {article.body.split('\n\n').map((p, i) => (
-              <p key={i} className="text-[15px] leading-[1.65] mb-4 text-[#222]">{p}</p>
+            {/* Photo */}
+            <div className="w-full h-52 bg-[#e8e8e8] mb-4 flex items-end p-2" style={{ color: '#999', fontFamily: 'Arial, sans-serif' }}>
+              <span className="text-[10px]">Photo: Getty Images / Bank of England, Threadneedle Street</span>
+            </div>
+
+            {/* Body paragraphs */}
+            {LEAD.body.slice(0, 2).map((p, i) => (
+              <p key={i} className="text-[15.5px] leading-[1.7] mb-4">{p}</p>
             ))}
 
-            {/* Inline ad — Half-page (300×250) below fold */}
-            <div className="my-6 flex justify-center">
-              <AdSlot width={300} height={250} creative={creative} label="Rectangle 300×250" />
+            {/* Inline MPU */}
+            <div className="float-right ml-6 mb-4">
+              <AdSlot width={300} height={250} creative={creative} />
             </div>
 
-            {/* More body text below ad */}
-            <p className="text-[15px] leading-[1.65] mb-4 text-[#222]">{sidebar.body.split('\n\n')[0]}</p>
+            {LEAD.body.slice(2).map((p, i) => (
+              <p key={i} className="text-[15.5px] leading-[1.7] mb-4">{p}</p>
+            ))}
+
+            <div className="clear-both" />
           </article>
 
           {/* Sidebar */}
-          <aside className="w-[300px] flex-shrink-0">
+          <aside className="w-[300px] flex-shrink-0" style={{ fontFamily: 'Arial, sans-serif' }}>
 
-            {/* Sidebar ad */}
-            <div className="mb-6">
-              <AdSlot width={300} height={250} creative={creative} label="Rectangle 300×250" />
+            {/* Sidebar MPU */}
+            <div className="mb-5">
+              <AdSlot width={300} height={250} creative={creative} />
             </div>
 
-            {/* Sidebar stories */}
-            <div className="border-t-2 border-[#1a1a2e] pt-3 mb-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-3" style={{ fontFamily: 'Arial, sans-serif' }}>Most Read</p>
-              {[
-                'City firms warn of talent exodus amid remote-work crackdown',
-                'Electric vehicle sales stall as subsidy schemes expire',
-                'Retail sales beat forecasts for third consecutive month',
-                'Tech layoffs continue as AI investment reshapes workforce',
-              ].map((t, i) => (
-                <div key={i} className="flex gap-2 mb-3 pb-3 border-b border-[#e8e8e0]">
-                  <span className="text-[22px] font-black text-[#ddd] leading-none flex-shrink-0 w-7" style={{ fontFamily: 'Arial, sans-serif' }}>{i + 1}</span>
-                  <p className="text-[13px] leading-snug font-bold">{t}</p>
+            {/* Latest stories */}
+            <div className="border-t-2 mb-5 pt-2" style={{ borderColor: T_BLUE }}>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: T_BLUE }}>Latest</p>
+              {SIDEBAR_STORIES.map((s, i) => (
+                <div key={i} className="mb-3 pb-3 border-b border-[#eee]">
+                  <span
+                    className="text-[9px] font-black uppercase tracking-wider px-1 py-0.5 text-white inline-block mb-1"
+                    style={{ background: T_BLUE }}
+                  >
+                    {s.tag}
+                  </span>
+                  <p className="text-[13px] font-bold leading-snug" style={{ fontFamily: '"Times New Roman", Georgia, serif', color: T_DARK }}>
+                    {s.headline}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: '#999' }}>{s.time}</p>
                 </div>
               ))}
             </div>
 
-            {/* Sidebar article */}
-            <div className="border-t-2 border-[#1a1a2e] pt-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-3" style={{ fontFamily: 'Arial, sans-serif' }}>Analysis</p>
-              <h3 className="text-[16px] font-black leading-snug mb-2">{sidebar.headline}</h3>
-              <p className="text-[13px] leading-relaxed text-[#444]">{sidebar.body.split('\n\n')[0].slice(0, 180)}…</p>
+            {/* Most Read */}
+            <div className="border-t-2 pt-2" style={{ borderColor: T_DARK }}>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-3">Most Read</p>
+              {MOST_READ.map((t, i) => (
+                <div key={i} className="flex gap-2 mb-3 pb-3 border-b border-[#eee]">
+                  <span className="text-[20px] font-black flex-shrink-0 w-6 leading-none" style={{ color: '#ddd' }}>{i + 1}</span>
+                  <p className="text-[12px] leading-snug font-bold" style={{ fontFamily: '"Times New Roman", Georgia, serif' }}>{t}</p>
+                </div>
+              ))}
             </div>
           </aside>
+
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="mt-8 bg-[#1a1a2e] text-white/50 text-[11px] py-6" style={{ fontFamily: 'Arial, sans-serif' }}>
-        <div className="max-w-[1080px] mx-auto px-4 flex justify-between items-center">
-          <span className="font-black text-white/80 text-base" style={{ fontFamily: 'Georgia, serif' }}>The Tribune</span>
-          <span>© 2026 Tribune Media Group · Mockup generated by AMP for preview purposes only</span>
+      <footer className="border-t-2 border-[#1a1a1a] py-5 px-4" style={{ background: '#1a1a1a', fontFamily: 'Arial, sans-serif' }}>
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between">
+          <span className="font-bold text-white text-[15px]" style={{ fontFamily: '"Times New Roman", Georgia, serif' }}>
+            The Daily Telegraph
+          </span>
+          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            © 2026 Telegraph Media Group · Mockup generated by AMP for preview purposes only
+          </span>
         </div>
       </footer>
+
     </div>
   )
 }
