@@ -153,7 +153,10 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
 Call this after submit_campaign when the user wants to top up their wallet to activate their campaign.
 Returns a checkout_url — share it as a clickable link for the user to open in their browser.
 
-The user can pay by card. In test mode, use card number 4242 4242 4242 4242 with any expiry and CVC.`,
+The user can pay by card. In test mode, use card number 4242 4242 4242 4242 with any expiry and CVC.
+
+After sharing the link, tell the user: "Once you've completed payment, come back here and let me know — I'll confirm your wallet is funded and your campaign is ready to go."
+Then wait for the user to return. When they do, call check_wallet_balance to verify the payment went through.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -162,6 +165,18 @@ The user can pay by card. In test mode, use card number 4242 4242 4242 4242 with
         campaign_name: { type: 'string', description: 'Used as the line item description in Stripe Checkout' },
       },
       required: ['wallet_id', 'amount_usd'],
+    },
+  },
+  {
+    name: 'check_wallet_balance',
+    description: `Check a wallet's balance and recent payments. Call this after the user confirms they've completed payment via the Stripe Checkout link.
+Returns the current balance and most recent payment status so you can confirm to the user that their wallet is funded.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet_id: { type: 'string', description: 'Stripe Customer ID (e.g. cus_Abc123)' },
+      },
+      required: ['wallet_id'],
     },
   },
   {
@@ -302,6 +317,42 @@ async function submitCampaign(args: Record<string, string>): Promise<object> {
     ...beeswaxResult,
     ...(wallet ? { wallet } : {}),
     next_step: `Campaign submitted. ${wallet ? `Wallet created (ID: ${wallet.wallet_id}, balance: $0). Ask the user if they'd like to top up their wallet to activate the campaign — if yes, call topup_wallet with wallet_id="${wallet.wallet_id}" and the amount they specify. ` : ''}Now call get_campaign_stats with budget="${args.budget}", start_date="${args.start_date}", end_date="${args.end_date}", iab_category="${args.iab_category ?? ''}", campaign_name="${args.campaign_name}" to show the user their performance projections.`,
+  }
+}
+
+async function checkWalletBalance(args: Record<string, unknown>): Promise<object> {
+  const stripe = getStripe()
+  const walletId = args.wallet_id as string
+
+  // Get customer
+  const customer = await stripe.customers.retrieve(walletId)
+  if (customer.deleted) {
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'Wallet not found' }) }] }
+  }
+
+  // Get most recent payment intents for this customer
+  const payments = await stripe.paymentIntents.list({ customer: walletId, limit: 3 })
+  const recentPayments = payments.data.map(p => ({
+    amount_usd: p.amount / 100,
+    status: p.status,
+    created: new Date(p.created * 1000).toISOString(),
+  }))
+
+  const totalPaid = payments.data
+    .filter(p => p.status === 'succeeded')
+    .reduce((sum, p) => sum + p.amount / 100, 0)
+
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        wallet_id: walletId,
+        email: customer.email,
+        total_paid_usd: totalPaid,
+        recent_payments: recentPayments,
+        funded: totalPaid > 0,
+      }, null, 2),
+    }],
   }
 }
 
@@ -455,6 +506,10 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
 
   if (name === 'topup_wallet') {
     return await topupWallet(args)
+  }
+
+  if (name === 'check_wallet_balance') {
+    return await checkWalletBalance(args)
   }
 
   if (name === 'validate_campaign_fields') {
