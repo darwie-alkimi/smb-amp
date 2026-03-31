@@ -1,8 +1,8 @@
 # Product Requirements Document
 ## SMB Ad Campaign Setup Chatbot (via Beeswax DSP)
 
-**Version:** 1.1
-**Date:** 2026-03-16
+**Version:** 1.2
+**Date:** 2026-03-31
 **Status:** MVP Built & In Testing
 
 ---
@@ -48,15 +48,25 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 - Dark AMP-inspired UI theme
 - Mock mode when Beeswax credentials not set
 
+### Also Built (Session 5, 2026-03-31) ✓
+- **Email collection** — contact email captured alongside contact name (MCP flow)
+- **Wallet creation** — Stripe Customer auto-created from email on `submit_campaign` (MCP)
+- **Stripe top-up** — `topup_wallet` MCP tool generates a Stripe Checkout link (test mode)
+- **Payment auto-detection** — `await_payment` tool polls Stripe every 3s (up to 4.5 min); Claude confirms payment automatically without user input
+- **Payment success page** — `/payment-success` confirms payment amount + campaign, links back to Claude.ai
+- **Performance projections** — `get_campaign_stats` called immediately and automatically after `submit_campaign`
+- **Wallet balance check** — `check_wallet_balance` tool for manual verification
+
 ### Out of Scope (Post-MVP)
-- Campaign activation — drafts only, account manager activates
+- Campaign activation on wallet funding (currently drafts only, account manager activates)
+- Stablecoin / Web3 wallet top-up (fiat Stripe only for now)
+- Google SSO (web app auth — planned, not yet built)
+- Real-time spend drawdown from wallet
 - Audience segment targeting beyond geography
 - Frequency capping / bid strategy
-- Reporting / analytics
 - Multi-user / team accounts
 - Email notification to account manager on submission
 - S3 storage for creative files
-- Auth / login system
 
 ---
 
@@ -129,8 +139,9 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 | Backend | Next.js API routes (Node.js runtime) |
 | DSP | Beeswax REST API (Basic auth) |
 | File storage | Local validation only (S3 upload is next step) |
-| Auth | None (MVP — one-shot flow, no login) |
-| Hosting | Local dev / to be deployed |
+| Payments | Stripe (test mode) — Customer Balance as prepaid wallet |
+| Auth | None on web app yet — email collected conversationally in MCP |
+| Hosting | Vercel (auto-deploy from `main` branch) |
 
 ### Key Files
 | File | Purpose |
@@ -143,6 +154,9 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 | `src/lib/creative-generator.ts` | Shared Claude SVG generation logic (browser + MCP) |
 | `src/lib/beeswax.ts` | Beeswax integration (mock + live) |
 | `src/lib/campaign-config.ts` | Claude system prompt + tool definitions |
+| `src/lib/mcp-server.ts` | MCP tool definitions + handlers (submit, wallet, payment, stats) |
+| `src/lib/stripe.ts` | Lazy Stripe client singleton |
+| `src/app/payment-success/page.tsx` | Post-payment confirmation page |
 | `src/lib/types.ts` | Shared TypeScript types |
 | `.env.local` | Credentials (gitignored) |
 | `.env.example` | Template for credentials |
@@ -156,7 +170,9 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 | Each SMB gets own Beeswax advertiser? | Yes — created automatically on submission |
 | Minimum budget? | None — it's a draft, no enforcement needed |
 | Who activates draft? | Account manager reviews in Beeswax and activates |
-| Login/auth for MVP? | No — one-shot flow, email captured in chat |
+| Login/auth for MVP? | MCP: email captured conversationally + Stripe wallet created. Web app: Google SSO planned post-MVP. |
+| Wallet type? | Stripe Customer Balance (fiat) for now — stablecoin/Web3 wallet planned as follow-on |
+| Payment confirmation UX? | await_payment tool polls Stripe automatically — no user input needed |
 | CPM/impression estimate? | Removed — not needed for draft creation |
 | IAB category optional or required? | Required — asked as plain business sector question |
 
@@ -167,7 +183,9 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 1. Where does the creative file actually go? (Currently validated but not stored — needs S3)
 2. How does account manager get notified when a draft is submitted? (Email notification not built yet)
 3. Do we want a dashboard for account managers to see all submitted drafts?
-4. Deploy to Vercel or internal hosting?
+4. When does a funded wallet trigger campaign activation in Beeswax? (Currently manual)
+5. Which chain/stablecoin for the Web3 wallet top-up path?
+6. Does Vercel Pro plan need to be confirmed for 300s `await_payment` timeout?
 
 ---
 
@@ -184,13 +202,14 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 
 ## 12. Next Steps (Post-MVP)
 
-1. **S3 creative upload** — actually store the file and associate with Beeswax creative
-2. **Account manager notification** — email via Resend/SendGrid when draft submitted
-3. **Deploy** — Vercel or internal hosting
-4. **Pilot** — test with 3–5 real SMBs
-5. **Auth** — login so SMBs can return and view their campaigns
-6. **Dashboard** — campaign history page (account manager view)
-7. **Alkimi DSP integration** — push to Alkimi test DSP alongside Beeswax (OAuth2/Keycloak auth, credentials available)
+1. **Google SSO (web app)** — next-auth + GoogleProvider, email pre-populated from session, wallet auto-created on sign-in
+2. **Campaign activation on payment** — webhook from Stripe triggers Beeswax draft activation
+3. **Stablecoin top-up** — Web3 wallet path once chain/stablecoin decided
+4. **S3 creative upload** — actually store the file and associate with Beeswax creative
+5. **Account manager notification** — email via Resend/SendGrid when draft submitted
+6. **Pilot** — test with 3–5 real SMBs
+7. **Dashboard** — campaign history page (account manager view)
+8. **Alkimi DSP integration** — push to Alkimi test DSP alongside Beeswax (OAuth2/Keycloak auth, credentials available)
 
 ---
 
@@ -315,3 +334,29 @@ A conversational chatbot that guides an SMB user through campaign setup step-by-
 - MCP path stores SVG in Vercel Blob and returns URL; browser path sends SVG through existing upload route
 
 **Status:** AI creative generation built for both browser and MCP. No new env vars required.
+
+---
+
+## Session 5 — 2026-03-31
+
+**What was built:**
+- **Email collection in MCP** — `contact_email` added as required field to `submit_campaign` and `validate_campaign_fields`; Claude asks for name + email together as a dedicated step before campaign name
+- **Stripe wallet creation** — on `submit_campaign`, a Stripe Customer is auto-created (or fetched idempotently) from the contact email; Customer ID is the wallet identifier
+- **`topup_wallet` MCP tool** — creates a Stripe Checkout Session and returns the URL; Claude shares it immediately after campaign submission
+- **`await_payment` MCP tool** — polls Stripe Checkout Session status every 3s for up to 4.5 minutes; Claude calls it automatically after sharing the top-up link; confirms payment without any user input needed
+- **`check_wallet_balance` MCP tool** — fallback manual check; lists recent payments for a Stripe Customer
+- **Payment success page** — `/payment-success` shows confirmed amount + campaign name; "Return to Claude.ai" CTA
+- **`get_campaign_stats` ordering fixed** — tool description and `next_step` updated to force stats call immediately after `submit_campaign`, before wallet prompt
+- **MCP route `maxDuration = 300`** — allows long-running `await_payment` poll on Vercel Pro
+- **Lazy Stripe client** (`src/lib/stripe.ts`) — initialises only when `STRIPE_SECRET_KEY` is set; safe at build time
+
+**Decisions made:**
+- Wallet = Stripe Customer Balance (fiat) for now; stablecoin/Web3 path deferred until chain/stablecoin decided
+- `await_payment` polls Stripe API directly (no webhook needed for MVP) — requires Vercel Pro for full 4.5-min window
+- Email captured conversationally in MCP (Google SSO for web app is a separate follow-on)
+- Wallet ID is the Stripe Customer ID (`cus_...`) — deterministic lookup via email means no DB needed
+
+**Environment additions:**
+- `STRIPE_SECRET_KEY=sk_test_...` — added to `.env.local` and Vercel environment variables
+
+**Status:** Stripe wallet creation + top-up working end-to-end in test mode via MCP. `await_payment` auto-confirms without user input.
