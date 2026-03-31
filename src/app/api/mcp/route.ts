@@ -13,6 +13,8 @@ import { TOOLS, SERVER_INFO, PROTOCOL_VERSION, handleToolCall } from '@/lib/mcp-
 
 // Node.js runtime required for Buffer (used in creative URL fetching)
 export const runtime = 'nodejs'
+// Allow long-running tool calls (e.g. await_payment polling Stripe)
+export const maxDuration = 300
 
 // ─── JSON-RPC helpers ─────────────────────────────────────────────────────────
 

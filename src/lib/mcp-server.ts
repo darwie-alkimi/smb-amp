@@ -155,8 +155,7 @@ Returns a checkout_url — share it as a clickable link for the user to open in 
 
 The user can pay by card. In test mode, use card number 4242 4242 4242 4242 with any expiry and CVC.
 
-After sharing the link, tell the user: "Once you've completed payment, come back here and let me know — I'll confirm your wallet is funded and your campaign is ready to go."
-Then wait for the user to return. When they do, call check_wallet_balance to verify the payment went through.`,
+IMPORTANT: After sharing the checkout_url with the user, IMMEDIATELY call await_payment with the returned session_id — do not wait for the user to say anything. The await_payment tool will automatically detect when payment completes and return confirmation.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -165,6 +164,19 @@ Then wait for the user to return. When they do, call check_wallet_balance to ver
         campaign_name: { type: 'string', description: 'Used as the line item description in Stripe Checkout' },
       },
       required: ['wallet_id', 'amount_usd'],
+    },
+  },
+  {
+    name: 'await_payment',
+    description: `Poll Stripe until a Checkout Session is paid. Call this IMMEDIATELY after topup_wallet — do not wait for the user to say anything.
+This tool blocks until payment is confirmed (up to 5 minutes), then returns automatically.
+When it returns paid: true, tell the user their payment is confirmed and their wallet is funded.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'Stripe Checkout Session ID returned by topup_wallet' },
+      },
+      required: ['session_id'],
     },
   },
   {
@@ -320,6 +332,43 @@ async function submitCampaign(args: Record<string, string>): Promise<object> {
   }
 }
 
+async function awaitPayment(args: Record<string, unknown>): Promise<object> {
+  const stripe = getStripe()
+  const sessionId = args.session_id as string
+  const pollIntervalMs = 3000
+  const timeoutMs = 270_000 // 4.5 minutes (within maxDuration of 300s)
+  const start = Date.now()
+
+  while (Date.now() - start < timeoutMs) {
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+    if (session.payment_status === 'paid') {
+      const amountUsd = (session.amount_total ?? 0) / 100
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            paid: true,
+            amount_usd: amountUsd,
+            customer: session.customer,
+            message: `Payment of $${amountUsd.toFixed(2)} confirmed. The wallet is funded and the campaign is ready to activate.`,
+          }),
+        }],
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        paid: false,
+        message: 'Payment not detected within 4.5 minutes. Ask the user if they completed the payment — if yes, call check_wallet_balance to verify.',
+      }),
+    }],
+  }
+}
+
 async function checkWalletBalance(args: Record<string, unknown>): Promise<object> {
   const stripe = getStripe()
   const walletId = args.wallet_id as string
@@ -374,13 +423,18 @@ async function topupWallet(args: Record<string, unknown>): Promise<object> {
       quantity: 1,
     }],
     mode: 'payment',
-    success_url: 'https://smb-amp.vercel.app?topup=success',
-    cancel_url:  'https://smb-amp.vercel.app?topup=cancelled',
+    success_url: `https://smb-amp.vercel.app/payment-success?amount=${args.amount_usd}${campaignName ? `&campaign=${encodeURIComponent(campaignName)}` : ''}`,
+    cancel_url:  'https://smb-amp.vercel.app',
   })
   return {
     content: [{
       type: 'text',
-      text: JSON.stringify({ checkout_url: session.url, amount_usd: args.amount_usd }),
+      text: JSON.stringify({
+        checkout_url: session.url,
+        session_id: session.id,
+        amount_usd: args.amount_usd,
+        next_step: `Share the checkout_url with the user, then immediately call await_payment with session_id="${session.id}" — do not wait for user input.`,
+      }),
     }],
   }
 }
@@ -506,6 +560,10 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
 
   if (name === 'topup_wallet') {
     return await topupWallet(args)
+  }
+
+  if (name === 'await_payment') {
+    return await awaitPayment(args)
   }
 
   if (name === 'check_wallet_balance') {
