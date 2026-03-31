@@ -27,9 +27,16 @@ export const PROTOCOL_VERSION = '2024-11-05'
 export const TOOLS = [
   {
     name: 'start_campaign_setup',
-    description: `Call this IMMEDIATELY when the user expresses any intent to create, set up, launch, or run an advertising campaign — e.g. "I want to create a campaign", "help me advertise my business", "set up an ad", "run ads", "I want to promote my business".
-Do NOT wait for more information. Call this tool right away as your first action.
-Returns a welcome message and instructions for the campaign setup flow.`,
+    description: `Call this IMMEDIATELY when the user expresses any intent to create, set up, launch, or run an advertising or marketing campaign — including variations like:
+- "I want to create/build/launch/run a campaign"
+- "set up an ad / digital ad / banner ad"
+- "I want to advertise my business / brand / product / service"
+- "help me with a marketing campaign / ad campaign / media campaign"
+- "I want to run ads / buy ads / place ads"
+- Any similar phrasing around paid advertising or campaign creation
+
+Do NOT call this for general questions about advertising. Only call it when the user clearly wants to set one up.
+Do NOT ask clarifying questions first — call this tool immediately as your first action.`,
     inputSchema: {
       type: 'object',
       properties: {},
