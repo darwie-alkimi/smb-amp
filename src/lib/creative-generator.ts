@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, Modality } from '@google/genai'
 import sharp from 'sharp'
 
 const IAB_TO_SECTOR: Record<string, string> = {
@@ -82,20 +82,20 @@ ${description ? `\nCreative direction from client: ${description}` : ''}
 
 Output: A single polished banner ad. No borders, no device frames, no mockup UI — just the advertisement itself.`
 
-  const response = await ai.models.generateImages({
-    model: 'imagen-3.0-generate-002',
-    prompt,
+  const response = await ai.models.generateContent({
+    model: 'nano-banana-pro-preview',
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: {
-      numberOfImages: 1,
-      aspectRatio,
-      outputMimeType: 'image/png',
+      responseModalities: [Modality.IMAGE, Modality.TEXT],
     },
   })
 
-  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes
-  if (!imageBytes) throw new Error('Gemini Imagen returned no image')
+  const imagePart = response.candidates?.[0]?.content?.parts?.find(
+    (p: { inlineData?: { mimeType?: string; data?: string } }) => p.inlineData?.mimeType?.startsWith('image/')
+  )
+  if (!imagePart?.inlineData?.data) throw new Error('Gemini returned no image')
 
-  const rawBuffer = Buffer.from(imageBytes, 'base64')
+  const rawBuffer = Buffer.from(imagePart.inlineData.data, 'base64')
 
   // Resize to exact IAB dimensions
   const resized = await sharp(rawBuffer)
