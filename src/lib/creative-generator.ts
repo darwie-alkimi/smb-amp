@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai'
 import sharp from 'sharp'
 
 const IAB_TO_SECTOR: Record<string, string> = {
@@ -21,23 +20,28 @@ const IAB_TO_SECTOR: Record<string, string> = {
   IAB22: 'retail and shopping',
 }
 
-const SECTOR_PALETTE: Record<string, { bg: string; accent: string; text: string; cta: string; mood: string }> = {
-  IAB1:  { bg: '#1a0533', accent: '#ff6d00', text: '#ffffff', cta: 'Watch Now',       mood: 'dramatic purple-orange, cinematic lighting' },
-  IAB2:  { bg: '#0d1117', accent: '#c0392b', text: '#ffffff', cta: 'Book Test Drive',  mood: 'sleek dark automotive, chrome accents, speed lines' },
-  IAB3:  { bg: '#0f2044', accent: '#c9a84c', text: '#ffffff', cta: 'Get a Quote',      mood: 'corporate navy-gold, professional trust' },
-  IAB5:  { bg: '#1b3a2f', accent: '#f9ca24', text: '#ffffff', cta: 'Enrol Now',        mood: 'academic green-gold, inspiring growth' },
-  IAB7:  { bg: '#006064', accent: '#80cbc4', text: '#ffffff', cta: 'Book Now',         mood: 'clean teal health, calming trust' },
-  IAB8:  { bg: '#7f1d1d', accent: '#fb923c', text: '#ffffff', cta: 'Order Now',        mood: 'warm rich red-orange, appetising food photography feel' },
-  IAB13: { bg: '#0c2340', accent: '#d4af37', text: '#ffffff', cta: 'Get Started',      mood: 'premium finance navy-gold, wealth sophistication' },
-  IAB17: { bg: '#1e3a5f', accent: '#f97316', text: '#ffffff', cta: 'Join Now',         mood: 'dynamic sports blue-orange, energy and motion' },
-  IAB18: { bg: '#2d1b4e', accent: '#f472b6', text: '#ffffff', cta: 'Shop Now',         mood: 'luxury beauty violet-pink, elegance' },
-  IAB19: { bg: '#0f172a', accent: '#6366f1', text: '#ffffff', cta: 'Try Free',         mood: 'modern tech dark-indigo, futuristic clean' },
-  IAB20: { bg: '#0369a1', accent: '#38bdf8', text: '#ffffff', cta: 'Explore Now',      mood: 'vibrant travel blue, wanderlust sunshine' },
-  IAB21: { bg: '#292524', accent: '#d4af37', text: '#ffffff', cta: 'View Listings',    mood: 'sophisticated real estate charcoal-gold' },
-  IAB22: { bg: '#7f1d1d', accent: '#fb923c', text: '#ffffff', cta: 'Shop Now',         mood: 'bold retail red-orange, deals energy' },
+const SECTOR_STYLE: Record<string, string> = {
+  IAB1:  'dramatic cinematic lighting, deep purple and orange tones, event poster style',
+  IAB2:  'sleek dark automotive photography, gleaming chrome, speed motion blur, showroom lighting',
+  IAB3:  'clean corporate minimalism, deep navy and gold, professional trust, modern office',
+  IAB5:  'bright inspiring educational, green and yellow, students, books, growth',
+  IAB7:  'clean medical wellness, teal and white, healthy lifestyle, bright natural light',
+  IAB8:  'food photography, warm steam rising, rich saturated colours, appetising close-up, restaurant ambiance',
+  IAB13: 'premium finance, dark navy gold luxury, wealth, sophisticated, Wall Street aesthetic',
+  IAB17: 'dynamic sports action, blue and orange energy, athletic motion, stadium lighting',
+  IAB18: 'luxury beauty fashion, soft pink purple bokeh, glamour, editorial magazine style',
+  IAB19: 'futuristic tech, dark background glowing indigo blue, holographic, clean modern UI',
+  IAB20: 'vibrant travel photography, azure ocean, golden hour, exotic destination, wanderlust',
+  IAB21: 'premium real estate, charcoal and gold, architectural photography, aspirational home',
+  IAB22: 'bold retail, vivid colours, products, shopping bags, sale energy, exciting deals',
 }
 
-const DEFAULT_PALETTE = { bg: '#0f172a', accent: '#6366f1', text: '#ffffff', cta: 'Learn More', mood: 'modern professional' }
+const SECTOR_CTA: Record<string, string> = {
+  IAB1: 'Watch Now', IAB2: 'Book Test Drive', IAB3: 'Get a Quote',
+  IAB5: 'Enrol Now', IAB7: 'Book Now', IAB8: 'Order Now',
+  IAB13: 'Get Started', IAB17: 'Join Now', IAB18: 'Shop Now',
+  IAB19: 'Try Free', IAB20: 'Explore Now', IAB21: 'View Listings', IAB22: 'Shop Now',
+}
 
 export async function generateCreativeImage(
   businessName: string,
@@ -45,66 +49,66 @@ export async function generateCreativeImage(
   description?: string,
   format: '300x250' | '728x90' = '300x250'
 ): Promise<Buffer> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
   const sector = iabCategory ? (IAB_TO_SECTOR[iabCategory] ?? 'business') : 'business'
-  const palette = (iabCategory && SECTOR_PALETTE[iabCategory]) ? SECTOR_PALETTE[iabCategory] : DEFAULT_PALETTE
+  const style = (iabCategory && SECTOR_STYLE[iabCategory]) ? SECTOR_STYLE[iabCategory] : 'modern professional business, clean premium design'
+  const cta = (iabCategory && SECTOR_CTA[iabCategory]) ? SECTOR_CTA[iabCategory] : 'Learn More'
   const isLeaderboard = format === '728x90'
   const [w, h] = isLeaderboard ? [728, 90] : [300, 250]
-  const gradDir = isLeaderboard ? 'x1="0" y1="0" x2="1" y2="0"' : 'x1="0" y1="0" x2="0" y2="1"'
 
-  const layoutSpec = isLeaderboard ? `
-CANVAS: ${w}×${h}px horizontal leaderboard strip.
-ZONES (strict): Left 0–190px: brand zone | Centre 190–540px: message zone | Right 540–718px: CTA zone
-- Brand zone: bold business name, 20–24px, white, vertically centred. Add a small geometric accent shape (circle/diamond) in ${palette.accent} behind/beside the name.
-- Message zone: punchy headline max 6 words, 16–18px bold white, y≈38. Optional subline 11px white/60 y≈58. Add subtle diagonal lines or dots pattern in ${palette.accent}/15% opacity.
-- CTA zone: rounded rect button 155×40px centred in zone, fill ${palette.accent}, rx=6. Bold white CTA text "${palette.cta}" 13px centred. Add thin glow: filter drop-shadow 0 0 8px ${palette.accent}/50.
-- Vertical accent divider at x=188: line stroke=${palette.accent} opacity=0.4 y1=8 y2=82.
-- Full-width thin border: rect x=0.5 y=0.5 w=727 h=89 fill=none stroke=white stroke-opacity=0.08 stroke-width=1.`
-  : `
-CANVAS: ${w}×${h}px medium rectangle (MPU).
-SECTIONS: Top 0–70px brand | Middle 70–175px hero | Bottom 175–250px CTA
-- Background: rich gradient ${palette.bg} → darker variant. Add large abstract shape (blurred circle/hexagon) in ${palette.accent}/12% as depth element.
-- Brand section: business name bold 22–26px white centred y≈44. Horizontal accent line below: x1=25 y1=65 x2=275 y2=65 stroke=${palette.accent} sw=2.5.
-- Hero section: big bold headline 2 lines max, 24–28px white centred, lines at y≈105 and y≈135. Max 7 words. Add small decorative icon/badge in ${palette.accent} at 20% opacity as background texture.
-- CTA section: prominent button rect x=60 y=184 w=180 h=44 fill=${palette.accent} rx=8. Drop-shadow filter. Bold white "${palette.cta}" 15px centred. Add small arrow → after text. Tiny "Ad" text bottom-right 8px white/25.`
+  const layoutGuide = isLeaderboard
+    ? `wide horizontal leaderboard banner ad ${w}x${h}px, brand name on left side, compelling headline text in centre, prominent "${cta}" call-to-action button on right`
+    : `vertical display ad ${w}x${h}px medium rectangle, brand name at top, powerful visual in middle, prominent "${cta}" call-to-action button at bottom`
 
-  const prompt = `You are the world's best digital advertising designer with 20 years at top agencies (Wieden+Kennedy, BBDO, Ogilvy). Create a stunning, professional IAB display ad.
+  const prompt = [
+    `Professional high-converting digital display advertisement for "${businessName}", ${sector} industry.`,
+    layoutGuide + '.',
+    style + '.',
+    description ? description + '.' : '',
+    `Bold clear typography, strong visual hierarchy, premium advertising design.`,
+    `Shot by a top advertising photographer, used in premium publications like The Guardian and Financial Times.`,
+    `Ultra-high quality, 4K, professional advertising creative, no watermarks, no borders.`,
+  ].filter(Boolean).join(' ')
 
-BUSINESS: "${businessName}" — ${sector} industry
-MOOD & STYLE: ${palette.mood}${description ? ` | Client direction: ${description}` : ''}
-COLOUR SYSTEM: Primary bg ${palette.bg}, Accent/CTA ${palette.accent}, Text ${palette.text}
+  const token = process.env.HF_API_TOKEN
+  if (!token) throw new Error('HF_API_TOKEN not set')
 
-${layoutSpec}
+  // Try FLUX.1-dev first (highest quality), fall back to schnell
+  const models = [
+    'black-forest-labs/FLUX.1-schnell',
+    'stabilityai/stable-diffusion-xl-base-1.0',
+  ]
 
-DESIGN RULES:
-1. Background MUST be a rich linearGradient from ${palette.bg} to a 20% darker shade (id="bg", ${gradDir}).
-2. Every zone must have visual depth — no flat empty areas.
-3. Typography: font-family="'Arial Black', Arial, sans-serif" for headlines; "Arial, sans-serif" for body. NO external fonts.
-4. Use ONLY SVG primitives: rect, circle, polygon, ellipse, path, line, text, defs, linearGradient, radialGradient, stop, filter, feDropShadow, feGaussianBlur, clipPath, use. NO images, NO foreignObject.
-5. The headline must be relevant and compelling for ${sector} — create a real ad headline, not placeholder text.
-6. Add at least 3 decorative elements (geometric shapes, patterns, gradients) to make it feel premium.
+  let lastError: Error | null = null
+  for (const model of models) {
+    try {
+      const res = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'x-wait-for-model': 'true',
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: { width: w, height: h, num_inference_steps: 4, guidance_scale: 0 },
+        }),
+        signal: AbortSignal.timeout(90_000),
+      })
 
-OUTPUT: Return ONLY the raw SVG — start with <svg and end with </svg>. No markdown, no explanation, no code fences.`
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer())
+        // Resize to exact IAB dimensions and convert to PNG
+        return await sharp(buf).resize(w, h, { fit: 'fill' }).png().toBuffer()
+      }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    config: { temperature: 0.7 },
-  })
+      const errText = await res.text().catch(() => `HTTP ${res.status}`)
+      lastError = new Error(`${model}: ${res.status} ${errText.slice(0, 150)}`)
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e))
+    }
+  }
 
-  const raw = response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
-  const match = raw.match(/<svg[\s\S]*<\/svg>/i)
-  const svg = match ? match[0] : raw
-
-  if (!svg.startsWith('<svg')) throw new Error('SVG generation failed')
-
-  // Rasterise SVG → PNG at exact IAB dimensions
-  const png = await sharp(Buffer.from(svg))
-    .resize(w, h, { fit: 'fill' })
-    .png()
-    .toBuffer()
-
-  return png
+  throw lastError ?? new Error('All image generation models failed')
 }
 
 // Legacy export for web app UI compatibility
