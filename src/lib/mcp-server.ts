@@ -15,6 +15,7 @@ import { generateCreativeSvg } from './creative-generator'
 import { getMockStats } from './mock-stats'
 import { put } from '@vercel/blob'
 import { Resvg } from '@resvg/resvg-js'
+import { getStripe } from './stripe'
 
 // ─── Protocol constants ───────────────────────────────────────────────────────
 
@@ -80,7 +81,8 @@ Ask for fields one at a time in a friendly, conversational way.
 Required fields to collect:
 1. business_name  — Name of the business (e.g. "Joe's Pizza")
 2. contact_name   — Name of the person managing the campaign
-3. campaign_name  — Descriptive name (e.g. "Summer 2024 Promotion")
+3. contact_email  — Email address of the contact (ask alongside contact_name: "What's their name and email?")
+4. campaign_name  — Descriptive name (e.g. "Summer 2024 Promotion")
 4. start_date     — YYYY-MM-DD, must be today or later
 5. end_date       — YYYY-MM-DD, must be after start_date
 6. budget         — USD total (e.g. "2000" for $2,000)
@@ -104,6 +106,7 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
       properties: {
         business_name: { type: 'string', description: 'Business name' },
         contact_name:  { type: 'string', description: 'Contact person name' },
+        contact_email: { type: 'string', description: 'Contact person email address' },
         campaign_name: { type: 'string', description: 'Campaign name' },
         start_date:    { type: 'string', description: 'Start date (YYYY-MM-DD)' },
         end_date:      { type: 'string', description: 'End date (YYYY-MM-DD)' },
@@ -113,7 +116,7 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
         creative_url:  { type: 'string', description: 'URL to creative (from upload_creative or a public URL)' },
       },
       required: [
-        'business_name', 'contact_name', 'campaign_name',
+        'business_name', 'contact_name', 'contact_email', 'campaign_name',
         'start_date', 'end_date', 'budget', 'geography', 'iab_category',
       ],
     },
@@ -126,6 +129,7 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
       properties: {
         business_name: { type: 'string' },
         contact_name:  { type: 'string' },
+        contact_email: { type: 'string' },
         campaign_name: { type: 'string' },
         start_date:    { type: 'string' },
         end_date:      { type: 'string' },
@@ -134,6 +138,24 @@ After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with 
         iab_category:  { type: 'string' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'topup_wallet',
+    description: `Create a Stripe Checkout link so the user can fund their wallet.
+
+Call this after submit_campaign when the user wants to top up their wallet to activate their campaign.
+Returns a checkout_url — share it as a clickable link for the user to open in their browser.
+
+The user can pay by card. In test mode, use card number 4242 4242 4242 4242 with any expiry and CVC.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet_id:     { type: 'string', description: 'Stripe Customer ID from submit_campaign result (e.g. cus_Abc123)' },
+        amount_usd:    { type: 'number', description: 'Amount to top up in USD (e.g. 500 for $500)' },
+        campaign_name: { type: 'string', description: 'Used as the line item description in Stripe Checkout' },
+      },
+      required: ['wallet_id', 'amount_usd'],
     },
   },
   {
@@ -247,10 +269,62 @@ async function submitCampaign(args: Record<string, string>): Promise<object> {
     creative_file_type,
   }
 
-  const result = await createBeeswaxDraft(campaign)
+  const beeswaxResult = await createBeeswaxDraft(campaign)
+
+  // Create or fetch Stripe Customer from email (idempotent)
+  let wallet: { wallet_id: string; balance: number; currency: string } | undefined
+  if (args.contact_email && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const stripe = getStripe()
+      const existing = await stripe.customers.list({ email: args.contact_email, limit: 1 })
+      const customer = existing.data[0] ?? await stripe.customers.create({
+        email: args.contact_email,
+        name: args.contact_name,
+        metadata: { source: 'smb-amp-mcp' },
+      })
+      wallet = {
+        wallet_id: customer.id,
+        balance: customer.balance, // in cents
+        currency: 'usd',
+      }
+    } catch {
+      // Stripe unavailable — skip wallet creation silently
+    }
+  }
+
   return {
-    ...result,
-    next_step: `Campaign submitted. Now call get_campaign_stats with budget="${args.budget}", start_date="${args.start_date}", end_date="${args.end_date}", iab_category="${args.iab_category ?? ''}", campaign_name="${args.campaign_name}" to show the user their performance projections.`,
+    ...beeswaxResult,
+    ...(wallet ? { wallet } : {}),
+    next_step: `Campaign submitted. ${wallet ? `Wallet created (ID: ${wallet.wallet_id}, balance: $0). Ask the user if they'd like to top up their wallet to activate the campaign — if yes, call topup_wallet with wallet_id="${wallet.wallet_id}" and the amount they specify. ` : ''}Now call get_campaign_stats with budget="${args.budget}", start_date="${args.start_date}", end_date="${args.end_date}", iab_category="${args.iab_category ?? ''}", campaign_name="${args.campaign_name}" to show the user their performance projections.`,
+  }
+}
+
+async function topupWallet(args: Record<string, unknown>): Promise<object> {
+  const stripe = getStripe()
+  const amountCents = Math.round((args.amount_usd as number) * 100)
+  const campaignName = args.campaign_name as string | undefined
+  const session = await stripe.checkout.sessions.create({
+    customer: args.wallet_id as string,
+    payment_method_types: ['card'],
+    line_items: [{
+      price_data: {
+        currency: 'usd',
+        unit_amount: amountCents,
+        product_data: {
+          name: `Wallet top-up${campaignName ? ` — ${campaignName}` : ''}`,
+        },
+      },
+      quantity: 1,
+    }],
+    mode: 'payment',
+    success_url: 'https://smb-amp.vercel.app?topup=success',
+    cancel_url:  'https://smb-amp.vercel.app?topup=cancelled',
+  })
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({ checkout_url: session.url, amount_usd: args.amount_usd }),
+    }],
   }
 }
 
@@ -371,6 +445,10 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
   if (name === 'submit_campaign') {
     const result = await submitCampaign(strArgs)
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+  }
+
+  if (name === 'topup_wallet') {
+    return await topupWallet(args)
   }
 
   if (name === 'validate_campaign_fields') {
