@@ -235,7 +235,18 @@ function startCampaignSetup(): object {
       type: 'text',
       text: JSON.stringify({
         message: "Welcome to AMP by Alkimi Exchange — let's get your campaign set up.",
-        next_step: "Begin collecting campaign fields. Start by asking for the business name (STEP 1). Then ask for the contact's name and email together (STEP 2). Continue through all required fields one at a time before calling submit_campaign.",
+        next_step: `Begin collecting campaign fields one at a time. Use numbered option lists wherever helpful — Claude.ai renders these as interactive tappable choices. Guidelines per field:
+
+STEP 1 — business_name: ask as plain text question.
+STEP 2 — contact_name + contact_email: ask together as plain text ("What's your name and email?").
+STEP 3 — campaign_name: suggest 3 relevant options based on the business name + a 4th "Custom name" option.
+STEP 4 — start_date: suggest 3 options (e.g. today, next Monday, 2 weeks from now) + "Pick a date".
+STEP 5 — end_date: suggest 3 durations (e.g. 2 weeks, 1 month, 3 months) + "Custom end date".
+STEP 6 — budget: suggest 3 common SMB budget tiers (e.g. $500, $1,000, $2,500) + "Custom amount".
+STEP 7 — geography: suggest 3 options based on context (e.g. United Kingdom, United States, Europe) + "Custom location".
+STEP 8 — iab_category: present the 3 most likely sectors for the business + "Something else".
+
+Always present options as a clean numbered list so Claude.ai renders them as interactive cards. Continue through all fields before calling submit_campaign.`,
       }),
     }],
   }
