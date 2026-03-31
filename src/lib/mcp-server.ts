@@ -11,10 +11,10 @@
 
 import type { CampaignState } from './types'
 import { createBeeswaxDraft } from './beeswax'
-import { generateCreativeSvg } from './creative-generator'
+import { generateCreativeImage } from './creative-generator'
+import { generatePublisherPreview } from './advision'
 import { getMockStats } from './mock-stats'
 import { put } from '@vercel/blob'
-import { Resvg } from '@resvg/resvg-js'
 import { getStripe } from './stripe'
 
 // ─── Protocol constants ───────────────────────────────────────────────────────
@@ -258,36 +258,41 @@ async function generateCreative(args: Record<string, string>) {
   const token = process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN
   const ts = Date.now()
 
-  // Generate both IAB formats in parallel
-  const [svg728, svg300] = await Promise.all([
-    generateCreativeSvg(business_name, iab_category, description, '728x90'),
-    generateCreativeSvg(business_name, iab_category, description, '300x250'),
+  // Generate both IAB formats in parallel using Gemini Imagen 3
+  const [png728, png300] = await Promise.all([
+    generateCreativeImage(business_name, iab_category, description, '728x90'),
+    generateCreativeImage(business_name, iab_category, description, '300x250'),
   ])
 
-  // Convert leaderboard SVG → PNG for inline preview in Claude.ai
-  const resvg = new Resvg(svg728, { fitTo: { mode: 'width', value: 728 } })
-  const pngBase64 = resvg.render().asPng().toString('base64')
-
-  // Upload both SVGs to Vercel Blob in parallel
+  // Upload both PNGs to Vercel Blob in parallel
   const [blob728, blob300] = await Promise.all([
-    put(`creative-728x90-${ts}.svg`, svg728, { access: 'public', contentType: 'image/svg+xml', token, addRandomSuffix: true }),
-    put(`creative-300x250-${ts}.svg`, svg300, { access: 'public', contentType: 'image/svg+xml', token, addRandomSuffix: true }),
+    put(`creative-728x90-${ts}.png`, png728, { access: 'public', contentType: 'image/png', token, addRandomSuffix: true }),
+    put(`creative-300x250-${ts}.png`, png300, { access: 'public', contentType: 'image/png', token, addRandomSuffix: true }),
   ])
 
-  const campaignName = encodeURIComponent(business_name ?? 'Campaign')
-  const previewUrl = `https://smb-amp.vercel.app/preview?leaderboard=${encodeURIComponent(blob728.url)}&creative=${encodeURIComponent(blob300.url)}&name=${campaignName}`
+  // Generate publisher preview via AdVision (live publisher site screenshot)
+  let publisherPreviewUrl: string | undefined
+  try {
+    publisherPreviewUrl = await generatePublisherPreview(
+      png300,
+      `creative-300x250-${ts}.png`,
+      iab_category
+    )
+  } catch {
+    // AdVision unavailable — skip preview silently
+  }
 
   return {
     content: [
-      { type: 'image', data: pngBase64, mimeType: 'image/png' },
+      { type: 'image', data: png728.toString('base64'), mimeType: 'image/png' },
       {
         type: 'text',
         text: JSON.stringify({
           creative_url: blob300.url,
           creative_url_leaderboard: blob728.url,
           creative_url_mpu: blob300.url,
-          publisher_preview_url: previewUrl,
-          next_step: "Show the user the leaderboard banner preview image above, then share the publisher_preview_url as a clickable link so they can see both creatives rendered on a mock Daily Telegraph publisher page. Ask if they'd like to use these creatives or generate new ones. If they approve, pass creative_url to submit_campaign.",
+          ...(publisherPreviewUrl ? { publisher_preview_url: publisherPreviewUrl } : {}),
+          next_step: `Show the user the leaderboard banner preview image above.${publisherPreviewUrl ? ' Then share the publisher_preview_url as a clickable link so they can see the creative placed on a real premium publisher page.' : ''} Ask if they'd like to use these creatives or generate new ones. If they approve, pass creative_url to submit_campaign.`,
         }, null, 2),
       },
     ],
