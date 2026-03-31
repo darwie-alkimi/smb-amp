@@ -240,12 +240,14 @@ function startCampaignSetup(): object {
 STEP 1 — business_name: ask as plain text question.
 STEP 2 — contact_name + contact_email: ask together as plain text ("What's your name and email?").
 STEP 3 — campaign_name: suggest 3 relevant options based on the business name + a 4th "Custom name" option.
-STEP 4 — start_date + end_date together: ask in one message. Suggest 3 common duration options as numbered choices (e.g. "1. Start today, run for 2 weeks", "2. Start next Monday, run for 1 month", "3. Start today, run for 3 months") + "4. Custom dates". Save both start_date and end_date from whichever option they pick.
-STEP 6 — budget: suggest 3 common SMB budget tiers (e.g. $500, $1,000, $2,500) + "Custom amount".
-STEP 7 — geography: suggest 3 options based on context (e.g. United Kingdom, United States, Europe) + "Custom location".
-STEP 8 — iab_category: present the 3 most likely sectors for the business + "Something else".
+STEPS 4–8 — present ALL of the following as a single multi-step form in one message. Claude.ai will render this as a paginated popup (e.g. "1 of 4", "2 of 4") that the user pages through without leaving the conversation. Format each as a separate question block with numbered options:
 
-Always present options as a clean numbered list so Claude.ai renders them as interactive cards. Continue through all fields before calling submit_campaign.`,
+Question 1 of 4 — Campaign dates: suggest 3 start+duration combos (e.g. "Start today, 2 weeks", "Start next Monday, 1 month", "Start today, 3 months") + "Custom dates"
+Question 2 of 4 — Budget: suggest 3 SMB tiers (e.g. £500, £1,000, £2,500) + "Custom amount"
+Question 3 of 4 — Geography: suggest 3 options based on business context (e.g. United Kingdom, United States, Europe) + "Custom location"
+Question 4 of 4 — Business sector: suggest the 3 most likely IAB sectors based on the business name + "Something else"
+
+Present all 4 questions together in one response. Do NOT ask them one by one. Once the user has answered all 4, save all fields and proceed to the creative step.`,
       }),
     }],
   }
