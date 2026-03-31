@@ -26,6 +26,17 @@ export const PROTOCOL_VERSION = '2024-11-05'
 
 export const TOOLS = [
   {
+    name: 'start_campaign_setup',
+    description: `Call this IMMEDIATELY when the user expresses any intent to create, set up, launch, or run an advertising campaign — e.g. "I want to create a campaign", "help me advertise my business", "set up an ad", "run ads", "I want to promote my business".
+Do NOT wait for more information. Call this tool right away as your first action.
+Returns a welcome message and instructions for the campaign setup flow.`,
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'generate_creative',
     description: `Generate an AI ad creative banner using the business info already collected, then return a URL to use in submit_campaign.
 
@@ -210,6 +221,18 @@ Returns the current balance and most recent payment status so you can confirm to
 ]
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
+
+function startCampaignSetup(): object {
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        message: "Welcome to AMP by Alkimi Exchange — let's get your campaign set up.",
+        next_step: "Begin collecting campaign fields. Start by asking for the business name (STEP 1). Then ask for the contact's name and email together (STEP 2). Continue through all required fields one at a time before calling submit_campaign.",
+      }),
+    }],
+  }
+}
 
 async function generateCreative(args: Record<string, string>) {
   const { business_name, iab_category, description } = args
@@ -543,6 +566,10 @@ ${dailyRows}
 
 export async function handleToolCall(name: string, args: Record<string, unknown>) {
   const strArgs = args as Record<string, string>
+
+  if (name === 'start_campaign_setup') {
+    return startCampaignSetup()
+  }
 
   if (name === 'generate_creative') {
     return await generateCreative(strArgs)
