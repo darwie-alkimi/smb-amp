@@ -78,12 +78,18 @@ The file will be stored securely and the URL will be valid for Beeswax upload.`,
 IMPORTANT: Collect ALL required fields through conversation BEFORE calling this tool.
 Ask for fields one at a time in a friendly, conversational way.
 
+CRITICAL STEP ORDER — follow this exactly:
+STEP 1: Ask for business_name
+STEP 2: Ask "What's your name and email address?" — collect contact_name AND contact_email together before anything else. Do NOT skip this step or move on until both are provided.
+STEP 3: Ask for campaign_name
+STEP 4 onwards: start_date, end_date, budget, geography, iab_category, then creative.
+
 Required fields to collect:
 1. business_name  — Name of the business (e.g. "Joe's Pizza")
 2. contact_name   — Name of the person managing the campaign
-3. contact_email  — Email address of the contact (ask alongside contact_name: "What's their name and email?")
+3. contact_email  — Email address of the contact — MUST be collected at step 2 alongside contact_name
 4. campaign_name  — Descriptive name (e.g. "Summer 2024 Promotion")
-4. start_date     — YYYY-MM-DD, must be today or later
+5. start_date     — YYYY-MM-DD, must be today or later
 5. end_date       — YYYY-MM-DD, must be after start_date
 6. budget         — USD total (e.g. "2000" for $2,000)
 7. geography      — Target area (e.g. "United States - NY and CA", "United Kingdom")
