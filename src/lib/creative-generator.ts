@@ -91,14 +91,14 @@ function makeOverlaySvg(
   <!-- Semi-transparent left band for text -->
   <rect x="0" y="0" width="${w * 0.38}" height="${h}" fill="rgba(0,0,0,0.55)"/>
   <!-- Brand name -->
-  <text x="16" y="${h * 0.42}" font-family="'Arial Black',Arial,sans-serif" font-weight="900" font-size="19" fill="rgb(${fgR},${fgG},${fgB})" dominant-baseline="middle">${businessName}</text>
+  <text x="16" y="${h * 0.42}" font-family="sans-serif" font-weight="900" font-size="19" fill="rgb(${fgR},${fgG},${fgB})" dominant-baseline="middle">${businessName}</text>
   <!-- Accent underline -->
   <rect x="16" y="${h * 0.57}" width="${w * 0.3}" height="2.5" fill="rgb(${accR},${accG},${accB})"/>
   <!-- Headline small -->
   <text x="16" y="${h * 0.76}" font-family="Arial,sans-serif" font-weight="400" font-size="11" fill="rgba(${fgR},${fgG},${fgB},0.8)" dominant-baseline="middle">${headline}</text>
   <!-- CTA button right -->
   <rect x="${w * 0.68}" y="${(h-40)/2}" width="${w * 0.29}" height="40" rx="6" fill="rgb(${ctaR},${ctaG},${ctaB})"/>
-  <text x="${w * 0.68 + w * 0.29 / 2}" y="${h/2}" font-family="'Arial Black',Arial,sans-serif" font-weight="700" font-size="13" fill="rgb(${txtR},${txtG},${txtB})" text-anchor="middle" dominant-baseline="middle">${design.cta} →</text>
+  <text x="${w * 0.68 + w * 0.29 / 2}" y="${h/2}" font-family="sans-serif" font-weight="700" font-size="13" fill="rgb(${txtR},${txtG},${txtB})" text-anchor="middle" dominant-baseline="middle">${design.cta} →</text>
   <rect x="0.5" y="0.5" width="${w-1}" height="${h-1}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
 </svg>`
   } else {
@@ -114,16 +114,16 @@ function makeOverlaySvg(
     svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
   <!-- Top band -->
   <rect x="0" y="0" width="${w}" height="${bnds.topH}" fill="rgba(0,0,0,0.60)"/>
-  <text x="${w/2}" y="${bnds.topH * 0.52}" font-family="'Arial Black',Arial,sans-serif" font-weight="900" font-size="20" fill="rgb(${fgR},${fgG},${fgB})" text-anchor="middle" dominant-baseline="middle">${businessName}</text>
+  <text x="${w/2}" y="${bnds.topH * 0.52}" font-family="sans-serif" font-weight="900" font-size="20" fill="rgb(${fgR},${fgG},${fgB})" text-anchor="middle" dominant-baseline="middle">${businessName}</text>
   <rect x="20" y="${bnds.topH - 3}" width="${w - 40}" height="3" fill="rgb(${accR},${accG},${accB})" rx="1.5"/>
   <!-- Hero headline over image -->
   <rect x="0" y="${midY - 44}" width="${w}" height="88" fill="rgba(0,0,0,0.50)" rx="0"/>
-  <text x="${w/2}" y="${midY - 12}" font-family="'Arial Black',Arial,sans-serif" font-weight="900" font-size="24" fill="rgb(${fgR},${fgG},${fgB})" text-anchor="middle" dominant-baseline="middle">${line1}</text>
-  ${line2 ? `<text x="${w/2}" y="${midY + 18}" font-family="'Arial Black',Arial,sans-serif" font-weight="900" font-size="24" fill="rgb(${accR},${accG},${accB})" text-anchor="middle" dominant-baseline="middle">${line2}</text>` : ''}
+  <text x="${w/2}" y="${midY - 12}" font-family="sans-serif" font-weight="900" font-size="24" fill="rgb(${fgR},${fgG},${fgB})" text-anchor="middle" dominant-baseline="middle">${line1}</text>
+  ${line2 ? `<text x="${w/2}" y="${midY + 18}" font-family="sans-serif" font-weight="900" font-size="24" fill="rgb(${accR},${accG},${accB})" text-anchor="middle" dominant-baseline="middle">${line2}</text>` : ''}
   <!-- Bottom CTA band -->
   <rect x="0" y="${h - bnds.btmH}" width="${w}" height="${bnds.btmH}" fill="rgba(0,0,0,0.55)"/>
   <rect x="20" y="${h - bnds.btmH + 9}" width="${w - 40}" height="42" rx="21" fill="rgb(${ctaR},${ctaG},${ctaB})"/>
-  <text x="${w/2}" y="${h - bnds.btmH + 30}" font-family="'Arial Black',Arial,sans-serif" font-weight="700" font-size="15" fill="rgb(${txtR},${txtG},${txtB})" text-anchor="middle" dominant-baseline="middle">${design.cta} →</text>
+  <text x="${w/2}" y="${h - bnds.btmH + 30}" font-family="sans-serif" font-weight="700" font-size="15" fill="rgb(${txtR},${txtG},${txtB})" text-anchor="middle" dominant-baseline="middle">${design.cta} →</text>
   <rect x="0.5" y="0.5" width="${w-1}" height="${h-1}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
 </svg>`
   }
