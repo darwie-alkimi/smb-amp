@@ -47,7 +47,7 @@ const SECTOR_DESIGN: Record<string, {
 }
 
 const DEFAULT_DESIGN = {
-  bgPrompt: 'bold deep indigo blue background, modern abstract geometric shapes, professional business graphic design, no text',
+  heroPrompt: 'modern professional business abstract, clean minimal studio shot, dark background, premium quality',
   bgColor: '#1e1b4b', accentColor: '#818cf8', textColor: '#ffffff', ctaBg: '#4f46e5', ctaText: '#ffffff', cta: 'Learn More',
 }
 
