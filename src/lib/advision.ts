@@ -36,11 +36,11 @@ const PUBLISHER_BY_SECTOR: Record<string, { url: string; name: string }> = {
 // These are typical positions for leaderboard (728x90) and MPU (300x250) slots
 const AD_SLOT_POSITIONS: Record<string, { leaderboard: { x: number; y: number }; mpu: { x: number; y: number } }> = {
   'autocar.co.uk':    { leaderboard: { x: 356, y: 68  }, mpu: { x: 1100, y: 200 } },
-  'ft.com':           { leaderboard: { x: 356, y: 90  }, mpu: { x: 1100, y: 250 } },
+  'ft.com':           { leaderboard: { x: 356, y: 22  }, mpu: { x: 1100, y: 250 } },
   'techcrunch.com':   { leaderboard: { x: 356, y: 45  }, mpu: { x: 1080, y: 180 } },
-  'vogue.co.uk':      { leaderboard: { x: 356, y: 80  }, mpu: { x: 1100, y: 200 } },
-  'theguardian.com':  { leaderboard: { x: 356, y: 55  }, mpu: { x: 1100, y: 200 } },
-  default:            { leaderboard: { x: 356, y: 60  }, mpu: { x: 1100, y: 200 } },
+  'vogue.co.uk':      { leaderboard: { x: 356, y: 80  }, mpu: { x: 1110, y: 150 } },
+  'theguardian.com':  { leaderboard: { x: 356, y: 0   }, mpu: { x: 1100, y: 200 } },
+  default:            { leaderboard: { x: 356, y: 45  }, mpu: { x: 1100, y: 200 } },
 }
 
 function getSlotPosition(publisherUrl: string, format: '728x90' | '300x250') {
