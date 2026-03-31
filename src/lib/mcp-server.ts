@@ -106,7 +106,7 @@ Creative (required — always handle before submitting):
 - If the user has no creative: ask if they want AI to generate one, then call generate_creative and pass its creative_url
 - Do NOT call submit_campaign without first resolving the creative step
 
-After submit_campaign succeeds, ALWAYS immediately call get_campaign_stats with the same budget, start_date, end_date, iab_category, and campaign_name to show the user their performance projections.`,
+After submit_campaign succeeds, you MUST immediately call get_campaign_stats — do this as your very next action before saying anything to the user.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -193,7 +193,7 @@ Returns the current balance and most recent payment status so you can confirm to
   },
   {
     name: 'get_campaign_stats',
-    description: 'Show simulated performance stats for a submitted campaign. Call after submit_campaign succeeds. Returns a markdown report with KPIs, budget utilisation, and a 7-day spend breakdown. Clearly labelled as simulated.',
+    description: 'ALWAYS call this immediately after submit_campaign — do not wait, do not ask the user, just call it. Returns a full performance projection: impressions, clicks, CTR, spend, CPM, ROAS, budget utilisation bar, timeline progress, and a 7-day spend breakdown. Display the full markdown report to the user.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -328,7 +328,7 @@ async function submitCampaign(args: Record<string, string>): Promise<object> {
   return {
     ...beeswaxResult,
     ...(wallet ? { wallet } : {}),
-    next_step: `Campaign submitted. ${wallet ? `Wallet created (ID: ${wallet.wallet_id}, balance: $0). Ask the user if they'd like to top up their wallet to activate the campaign — if yes, call topup_wallet with wallet_id="${wallet.wallet_id}" and the amount they specify. ` : ''}Now call get_campaign_stats with budget="${args.budget}", start_date="${args.start_date}", end_date="${args.end_date}", iab_category="${args.iab_category ?? ''}", campaign_name="${args.campaign_name}" to show the user their performance projections.`,
+    next_step: `STEP 1 — IMMEDIATELY call get_campaign_stats with budget="${args.budget}", start_date="${args.start_date}", end_date="${args.end_date}", iab_category="${args.iab_category ?? ''}", campaign_name="${args.campaign_name}". Do this before saying anything else. STEP 2 — After showing the stats, ${wallet ? `ask the user if they'd like to top up their wallet (ID: ${wallet.wallet_id}) to activate the campaign. If yes, call topup_wallet.` : 'let the user know the campaign draft is ready.'}`,
   }
 }
 
